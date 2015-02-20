@@ -200,7 +200,6 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 #else
   printf("Initializing charge transfer\n");
 #endif
-//printf("%d \n", ct->site[44].resnr); //////////forced segfault
 
   /* Read the file charge-transfer.dat - list of sites */
   f = fopen("charge-transfer.dat", "r");
