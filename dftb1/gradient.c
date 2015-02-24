@@ -29,6 +29,9 @@ void offdiag_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t 
       dftb2.b[m][n] = 0.e0;
 
 
+
+
+
   //transform eigenvectors in orthogonal basis so they can be used for an EXACT AO representation of ct->wf
   //tested and this has nearly no influence on the results since orthogonalization yields linar combination like 99%:1% 
 /*  for (l=0; l<ct->dim; l++)
@@ -66,6 +69,11 @@ void offdiag_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t 
     }
     m++;
   }
+
+
+
+
+      
 
  //printf("FORCE: b-matrix end at %f\n",  (double) clock()/CLOCKS_PER_SEC);
 
@@ -122,6 +130,9 @@ void offdiag_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t 
             slkmatrices(k, j, dftb2.x, dftb2.auh, dftb2.buh, dftb->lmax, dftb->dim2, dftb->dr2, dftb2.izp, dftb->skstab2, dftb->skhtab2, dftb->skself2);
             x[j][i] = xhelp;
           }
+
+	      
+
           // use summation over angular momentum and magnetic quantum numbers
           // because shift is actually defined for the orbitals 
           for (lj=1; lj<=dftb->lmax[izpj]; lj++)

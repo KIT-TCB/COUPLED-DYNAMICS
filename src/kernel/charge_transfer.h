@@ -482,6 +482,7 @@ typedef struct {
       *ind, // nn+1
       ndim, // = ind[nn]
       *inf, // certain orbital index...
+      *ihomo,  // ihomo[i] index of first homo of site i 
       ne, /* number of external charges */
       *izp, /* list of atom types */
       nel, /* number of electrons */

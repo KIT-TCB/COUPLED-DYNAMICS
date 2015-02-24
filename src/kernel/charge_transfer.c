@@ -1796,6 +1796,7 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
   snew(dftb->phase2.shiftE, dftb->phase2.nn);
   snew(dftb->phase2.ind, dftb->phase2.nn + 1);
   snew(dftb->phase2.inf, ct->sites + 1);
+  snew(dftb->phase2.ihomo, ct->sites + 1);
   snew(dftb->phase2.izp, dftb->phase2.nn);
   snew(dftb->phase2.hamil, dftb->phase2.norb);
     snew(dftb->phase2.hamil[0], SQR(dftb->phase2.norb));
@@ -1877,8 +1878,11 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
   }
 
   dftb->phase2.inf[0] = 0; // where do the orbitals of fragment i start?
-  for (i=0; i<ct->sites; i++)
+  dftb->phase2.ihomo[0]=0;   //index of first homo of site i
+  for (i=0; i<ct->sites; i++){
     dftb->phase2.inf[i+1] = dftb->phase2.inf[i] + dftb->phase1[i].norb;
+    dftb->phase2.ihomo[i+1] = dftb->phase2.ihomo[i] + ct->site[i].homos;
+  }
 
   for (i=0; i<ct->sites; i++)
     for (j=0; j<ct->site[i].atoms; j++){
@@ -6338,28 +6342,36 @@ void project_wf_on_new_basis(int step, dftb_t *dftb, charge_transfer_t *ct, FILE
   double norm;
 
   // Transform orthogonal eigenvectors (basis of FO Hamiltonian) from non-orthogonal fragment basis to atomic basis //
+  for (iao=0; iao < dftb->phase2.norb; iao++)
   for (l=0; l<ct->dim; l++)
-    for (iao=0; iao < dftb->phase2.norb; iao++)
       dftb->orthogo.evec_ao[iao][l] = 0.0;
 
-  for (l=0; l<ct->dim; l++){
-  k=0;
-  for (i=0; i < ct->sites; i++) 
-  for (ii = 0; ii < ct->site[i].homos; ii++) {
-    ifo = ct->site[i].homo[ii] + dftb->phase2.inf[i] - 1;
-      for (iao=0; iao < dftb->phase2.norb; iao++){
-        dftb->orthogo.evec_ao[iao][l] += dftb->orthogo.sij[k + l * ct->dim] * dftb->phase2.Taf[iao][ifo];
-      }
-      k++;
-  }
-  }
 
+
+
+
+  for (l=0; l<ct->dim; l++){ 
+    for (iao=0; iao < dftb->phase2.norb; iao++){
+      k=0;
+      for (i=0; i < ct->sites; i++) 
+	for (ii = 0; ii < ct->site[i].homos; ii++) {
+	  ifo = ct->site[i].homo[ii] + dftb->phase2.inf[i] - 1;
+	  dftb->orthogo.evec_ao[iao][l] += dftb->orthogo.sij[k + l * ct->dim] * dftb->phase2.Taf[iao][ifo];
+     
+	  k++;
+	}
+    }
+  }
+ 
+ 
   if (ct->first_step) {
   printf("initialize state following \n");
-  for (l=0; l< ct->dim; l++)
-  for (iao=0; iao < dftb->phase2.norb; iao++){
+
+
+  for (iao=0; iao < dftb->phase2.norb; iao++)
+  for (l=0; l< ct->dim; l++){
     dftb->orthogo.evec_ao_old[iao][l] = dftb->orthogo.evec_ao[iao][l];
-    dftb->orthogo.evec_ao_ref[iao][l] = dftb->orthogo.evec_ao[iao][l];
+    //  dftb->orthogo.evec_ao_ref[iao][l] = dftb->orthogo.evec_ao[iao][l];
   }
   }
 
@@ -6417,21 +6429,32 @@ printf("overlap ortho/ortho (hybrid matrix)\n");
   // overlap with last step //
   // <evec_ao|evec_ao_old> = evec_ao^T * S_ao * evec_ao_old
   for (i = 0; i < ct->dim; i++)
-  for (j = 0; j < ct->dim; j++){
-    dftb->orthogo.overlap[i][j]=0.0;
-    for (iao=0; iao<dftb->phase2.norb; iao++)
-    for (jao=0; jao<dftb->phase2.norb; jao++)
-      dftb->orthogo.overlap[i][j] += dftb->orthogo.evec_ao[iao][i] * dftb->phase2.overl[iao][jao] * dftb->orthogo.evec_ao_old[jao][j];
-  }
+    for (j = 0; j < ct->dim; j++)
+      dftb->orthogo.overlap[i][j]=0.0;
+      
 
-  // overlap with wf in t=0
-  for (i = 0; i < ct->dim; i++)
-  for (j = 0; j < ct->dim; j++){
-    dftb->orthogo.overlap_ref[i][j]=0.0;
-    for (iao=0; iao<dftb->phase2.norb; iao++)
+
+
+  for (iao=0; iao<dftb->phase2.norb; iao++)
     for (jao=0; jao<dftb->phase2.norb; jao++)
-      dftb->orthogo.overlap_ref[i][j] += dftb->orthogo.evec_ao[iao][i] * dftb->phase2.overl[iao][jao] * dftb->orthogo.evec_ao_ref[jao][j];
-  }
+      for(k=0;k<ct->sites;k++)
+	for(l=0;l<ct->site[k].homos;l++)
+	  for(m=0;m<ct->site[k].homos;m++)
+	    {
+	      i=dftb->phase2.ihomo[k]+l;
+	      j=dftb->phase2.ihomo[k]+m;
+	      dftb->orthogo.overlap[i][j] += dftb->orthogo.evec_ao[iao][i] * dftb->phase2.overl[iao][jao] * dftb->orthogo.evec_ao_old[jao][j];
+	    }
+    
+
+  // overlap with wf in t=0   //taken out for now for performance reasons
+  // for (i = 0; i < ct->dim; i++)
+  //for (j = 0; j < ct->dim; j++){
+  // dftb->orthogo.overlap_ref[i][j]=0.0;
+  // for (iao=0; iao<dftb->phase2.norb; iao++)
+  //  for (jao=0; jao<dftb->phase2.norb; jao++)
+  //  dftb->orthogo.overlap_ref[i][j] += dftb->orthogo.evec_ao[iao][i] * dftb->phase2.overl[iao][jao] * dftb->orthogo.evec_ao_ref[jao][j];
+  //}
 
 
 ///*
@@ -6469,8 +6492,8 @@ printf("overlap ortho/ortho (hybrid matrix)\n");
 //*/
   
   // save wave function for next step //
-  for (l=0; l < ct->dim; l++)
   for (iao=0; iao < dftb->phase2.norb; iao++)
+  for (l=0; l < ct->dim; l++)
     dftb->orthogo.evec_ao_old[iao][l] = dftb->orthogo.evec_ao[iao][l];
   
 
@@ -6482,11 +6505,11 @@ printf("overlap ortho/ortho (hybrid matrix)\n");
   fprintf(f_ct_project_wf, " %10.6f ", sqrt(norm));
   fprintf(f_ct_project_wf, "\n");
 
-  fprintf(f_ct_project_wf_ref, "%10d ", step);
-  for (i=0; i<ct->dim; i++) {
-    for (m=i; m<ct->dim; m++) fprintf(f_ct_project_wf_ref, " %10.6f ", dftb->orthogo.overlap_ref[i][m]);
-  }
-  fprintf(f_ct_project_wf_ref, "\n");
+  //  fprintf(f_ct_project_wf_ref, "%10d ", step);
+  //for (i=0; i<ct->dim; i++) {
+  // for (m=i; m<ct->dim; m++) fprintf(f_ct_project_wf_ref, " %10.6f ", dftb->orthogo.overlap_ref[i][m]);
+  //}
+  //fprintf(f_ct_project_wf_ref, "\n");
 
 
   return ;
