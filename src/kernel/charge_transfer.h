@@ -111,6 +111,8 @@
 #define TFS_DECAY_CONSTANT (3.) // used in the decoherence algorithm
                                 // within Tully's fewest switches
 
+#define TFL_RC (1.0/80.0)  //critical fraction for flexible surface hopping approach
+
 #define MAX_PME_NEIGHBORS (1666)
 
 #define BOLTZMANN_HARTREE_KELVIN (RGAS / 1000 * KJMOL_TO_HARTREE)
@@ -133,7 +135,7 @@ typedef char sixstring[6];
 typedef int pme_integers[MAX_PME_NEIGHBORS];
 typedef struct {double dr, di;} double_complex;
 
-enum { cteSCCDYNAMIC, cteADIABATIC, cteBORNOPPENHEIMER, cteNONSCCDYNAMIC, ctePARAMETERS, cteADNONSCC, cteNOMOVEMENT, cteSURFACEHOPPING, cteFERMI, cteFERMIADIABATIC, cteFERMISFHOPPING, cteTULLYFEWESTSWITCHES, ctePERSICOSFHOPPING, cteNEGFLORENTZ, cteNEGFLORENTZNONSCC, cteESP, cteNR , cteTDA, ctePREZHDOSFHOPPING };
+enum { cteSCCDYNAMIC, cteADIABATIC, cteBORNOPPENHEIMER, cteNONSCCDYNAMIC, ctePARAMETERS, cteADNONSCC, cteNOMOVEMENT, cteSURFACEHOPPING, cteFERMI, cteFERMIADIABATIC, cteFERMISFHOPPING, cteTULLYFEWESTSWITCHES, cteTULLYLOC, ctePERSICOSFHOPPING, cteNEGFLORENTZ, cteNEGFLORENTZNONSCC, cteESP, cteNR , cteTDA, ctePREZHDOSFHOPPING };
 
 typedef struct {
   long n[1], n_lorentz[1];
@@ -308,7 +310,14 @@ typedef struct {
   double **tfs_vector_old; /* adiab. states in the previous step phi_k(t) */
   double **tfs_overlap;    /* <phi_k(t) | phi_j(t+dt)> */
   int tfs_initialization_step; /* is this the first step of a surface hopping simulation? */
-  /* variables for Persico's local diabatic surface hopping */
+  //variables for flexible surface hopping
+  int tfl_num_of_states; //current number of sites in sys.                                                                          
+  int tfl_num_of_states_old;  //# of sites at last step                                                                             
+  int *tfl_is_in_system; //...[i]==1 if site i in sys., otherwise ...[i]==0                                                         
+  int *tfl_is_in_system_old;  //at last step                                                                                        
+  double tfl_ca_real;   //coef. of surface before integration (real part)                                                          
+  double tfl_ca_im;    //(imaginary part) 
+/* variables for Persico's local diabatic surface hopping */
   twodoubles **per_propag_operator; /* exp[-i*Z*dt] */
   twodoubles **per_transformator;   /* U = T^t * exp[-i*Z*dt] */
   ct_per_orthogo_t *per_arrays;

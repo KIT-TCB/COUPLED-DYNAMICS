@@ -227,105 +227,110 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
         ct->jobtype=cteBORNOPPENHEIMER;
 	PRINTF("Born-Oppenheimer dynamics with explicit following of the wave function\n");
       } else {
-      if (strstr(line1, "NON") || strstr(line1, "non") || strstr(line1, "Non")) {
-        ct->jobtype = cteNONSCCDYNAMIC;
-        PRINTF("Uncoupled dynamics of the hole - w/o the polarization of solvent\n");
-      } else {
-        if (strstr(line1, "PAR") || strstr(line1, "par") || strstr(line1, "Par")) {
-          ct->jobtype = ctePARAMETERS;
-          PRINTF("Calculation of charge-transfer parameters only");
-        } else {
-          if (strstr(line1, "ADN") || strstr(line1, "adn") || strstr(line1, "Adn")) {
-            ct->jobtype = cteADNONSCC; // adiabatic non-self-consistent-charges
-            PRINTF("Adiabatic Born-Oppenheimer (SCF) dynamics of the hole w/o the polarization of solvent\n");
-          } else {
-            if (strstr(line1, "NOM") || strstr(line1, "nom") || strstr(line1, "Nom")) {
-              ct->jobtype = cteNOMOVEMENT;
-              PRINTF("Stationary charge, calculation of all contributions to hamiltonian\n");
-            } else {
-              if (strstr(line1, "SFH") || strstr(line1, "sfh") || strstr(line1, "Sfh")) {
-                ct->jobtype = cteSURFACEHOPPING;
-                PRINTF("Surface hopping between adiabatic surfaces, diabatic limit\n");
-              } else {
-                if (strstr(line1, "FER") || strstr(line1, "fer") || strstr(line1, "Fer")) {
-                  ct->jobtype = cteFERMI;
-                  PRINTF("Dynamics with Fermi-distribution-based combination of adiabatic states\n");
-                } else {
-                  if (strstr(line1, "FAD") || strstr(line1, "fad") || strstr(line1, "Fad")) {
-                    ct->jobtype = cteFERMIADIABATIC;
-                    PRINTF("Dynamics of the adiabatic ground state obtained from the Fermi-distribution-based combination\n");
-                  } else {
-                    if (strstr(line1, "FSH") || strstr(line1, "fsh") || strstr(line1, "Fsh")) {
-                      ct->jobtype = cteFERMISFHOPPING;
-                      PRINTF("Surface hopping between adiabatic states obtained from the Fermi-distribution-based combination, diabatic limit\n");
-                    } else {
-                      if (strstr(line1, "TFS") || strstr(line1, "tfs") || strstr(line1, "Tfs")) {
-                        ct->jobtype = cteTULLYFEWESTSWITCHES;
-                        PRINTF("Tully's fewest switches surface hopping between adiabatic states from Fermi-dist. combination\n");
-                      } else {
-		        if (strstr(line1, "PER") || strstr(line1, "per") || strstr(line1, "Per") || strstr(line1, "PED") || strstr(line1, "ped") || strstr(line1, "Ped")) {
-			  ct->jobtype = ctePERSICOSFHOPPING;
-			  PRINTF("Persico's locally diabatic surface hopping between adiabatic states from Fermi-dist. combination\n");
-                          if (strstr(line1, "PED") || strstr(line1, "ped") || strstr(line1, "Ped")) {
-                            ct->decoherence = 1;
-			    PRINTF(" - correction for quantum decoherence switched on!\n");
-                          } else {
-                            ct->decoherence = 0;
-                          }
+	if (strstr(line1, "NON") || strstr(line1, "non") || strstr(line1, "Non")) {
+	  ct->jobtype = cteNONSCCDYNAMIC;
+	  PRINTF("Uncoupled dynamics of the hole - w/o the polarization of solvent\n");
+	} else {
+	  if (strstr(line1, "PAR") || strstr(line1, "par") || strstr(line1, "Par")) {
+	    ct->jobtype = ctePARAMETERS;
+	    PRINTF("Calculation of charge-transfer parameters only");
+	  } else {
+	    if (strstr(line1, "ADN") || strstr(line1, "adn") || strstr(line1, "Adn")) {
+	      ct->jobtype = cteADNONSCC; // adiabatic non-self-consistent-charges
+	      PRINTF("Adiabatic Born-Oppenheimer (SCF) dynamics of the hole w/o the polarization of solvent\n");
+	    } else {
+	      if (strstr(line1, "NOM") || strstr(line1, "nom") || strstr(line1, "Nom")) {
+		ct->jobtype = cteNOMOVEMENT;
+		PRINTF("Stationary charge, calculation of all contributions to hamiltonian\n");
+	      } else {
+		if (strstr(line1, "SFH") || strstr(line1, "sfh") || strstr(line1, "Sfh")) {
+		  ct->jobtype = cteSURFACEHOPPING;
+		  PRINTF("Surface hopping between adiabatic surfaces, diabatic limit\n");
+		} else {
+		  if (strstr(line1, "FER") || strstr(line1, "fer") || strstr(line1, "Fer")) {
+		    ct->jobtype = cteFERMI;
+		    PRINTF("Dynamics with Fermi-distribution-based combination of adiabatic states\n");
+		  } else {
+		    if (strstr(line1, "FAD") || strstr(line1, "fad") || strstr(line1, "Fad")) {
+		      ct->jobtype = cteFERMIADIABATIC;
+		      PRINTF("Dynamics of the adiabatic ground state obtained from the Fermi-distribution-based combination\n");
+		    } else {
+		      if (strstr(line1, "FSH") || strstr(line1, "fsh") || strstr(line1, "Fsh")) {
+			ct->jobtype = cteFERMISFHOPPING;
+			PRINTF("Surface hopping between adiabatic states obtained from the Fermi-distribution-based combination, diabatic limit\n");
+		      } else {
+			if (strstr(line1, "TFS") || strstr(line1, "tfs") || strstr(line1, "Tfs")) {
+			  ct->jobtype = cteTULLYFEWESTSWITCHES;
+			  PRINTF("Tully's fewest switches surface hopping between adiabatic states from Fermi-dist. combination\n");
 			} else {
-			  if (strstr(line1, "NGL") || strstr(line1, "ngl") || strstr(line1, "Ngl")) {
-			    ct->jobtype = cteNEGFLORENTZ;
-			    PRINTF("Calculation of electric current with non-equlibrium Green's function approach + Lorentzian functions\n");
-			    PRINTF(" - populations of molecules mapped onto MD charges (self-consistent calculation)\n");
-			  } else {
-			    if (strstr(line1, "NGN") || strstr(line1, "ngn") || strstr(line1, "Ngn")) {
-			      ct->jobtype = cteNEGFLORENTZNONSCC;
-			      PRINTF("Calculation of electric current with non-equlibrium Green's function approach + Lorentzian functions\n");
-			      PRINTF(" - no mapping of charges to MD (non-self-consistent calculation)\n");
-			    } else {
-			      if (strstr(line1, "ESP") || strstr(line1, "esp") || strstr(line1, "Esp")) {
-			        ct->jobtype = cteESP;
-			        PRINTF("Calculation of electrostatic potential only\n");
+			  if(strstr(line1, "TFL")||strstr(line1, "tfl")||strstr(line1, "Tfl")) {
+			    ct->jobtype = cteTULLYLOC;                           
+			    PRINTF("Tully's fewest switches surface hopping adapted for systems with localized, spatially spread-out adiab. states \n");
+			  } else{
+			    if (strstr(line1, "PER") || strstr(line1, "per") || strstr(line1, "Per") || strstr(line1, "PED") || strstr(line1, "ped") || strstr(line1, "Ped")) {
+			      ct->jobtype = ctePERSICOSFHOPPING;
+			      PRINTF("Persico's locally diabatic surface hopping between adiabatic states from Fermi-dist. combination\n");
+			      if (strstr(line1, "PED") || strstr(line1, "ped") || strstr(line1, "Ped")) {
+				ct->decoherence = 1;
+				PRINTF(" - correction for quantum decoherence switched on!\n");
 			      } else {
-			        if (strstr(line1, "TDA") || strstr(line1, "Tda") || strstr(line1, "tda")) {
-                                  ct->jobtype = cteTDA;
-			          PRINTF("Calculation of Tunneling matrix elements through bridge.\n*******************************\n | ATTENTION: development version. only works for one specific peptide | \n ***************************** ");
-                                } else {
-                                  if (strstr(line1, "GFS") || strstr(line1, "gfs") || strstr(line1, "Gfs") || strstr(line1, "GFD") || strstr(line1, "gfd") || strstr(line1, "Gfd")) {
-                                    ct->jobtype = ctePREZHDOSFHOPPING;
-                                    printf("Global Flux Surface Hopping\n");
-                                    if (strstr(line1, "GFD") || strstr(line1, "gfd") || strstr(line1, "Gfd")) {
-                                      ct->decoherence = 1;
-                                      PRINTF(" - correction for quantum decoherence switched on!\n");
-                                    } else {
-                                      ct->decoherence = 0;
-                                    }
-			          } else {
-                                    PRINTF("Unknown job type for charge transfer, use one of:\n");
-                                    PRINTF("   SCCDYNAMIC, ADIABATIC, NON S C C, PARAMETERS, ADNON S C C, NOMOVEMENT, SFH (surface hopping), FER (dynamic with Fermi distribution),\n");
-			            PRINTF("   FAD (ground state from Fermi mixture), FSH (Fermi-based surface hopping), TFS (Tully's fewest switches),\n");
-			            PRINTF("   PER (Persico's surface hopping), PED (Persico's surface hopping with decoherence correction),\n");
-			            PRINTF("   NGL (non-equilibrium Green's function calc. of current), NGN (dtto, non-self-consistent calculation),\n");
-			            PRINTF("   ESP (calculation of electric potential only).\n");
-                                    PRINTF("Exiting!\n");
-                                    exit(-1);
-                                  }
-                                }
-                              }
-                            }
-                          }
+				ct->decoherence = 0;
+			      }
+			    } else {
+			      if (strstr(line1, "NGL") || strstr(line1, "ngl") || strstr(line1, "Ngl")) {
+				ct->jobtype = cteNEGFLORENTZ;
+				PRINTF("Calculation of electric current with non-equlibrium Green's function approach + Lorentzian functions\n");
+				PRINTF(" - populations of molecules mapped onto MD charges (self-consistent calculation)\n");
+			      } else {
+				if (strstr(line1, "NGN") || strstr(line1, "ngn") || strstr(line1, "Ngn")) {
+				  ct->jobtype = cteNEGFLORENTZNONSCC;
+				  PRINTF("Calculation of electric current with non-equlibrium Green's function approach + Lorentzian functions\n");
+				  PRINTF(" - no mapping of charges to MD (non-self-consistent calculation)\n");
+				} else {
+				  if (strstr(line1, "ESP") || strstr(line1, "esp") || strstr(line1, "Esp")) {
+				    ct->jobtype = cteESP;
+				    PRINTF("Calculation of electrostatic potential only\n");
+				  } else {
+				    if (strstr(line1, "TDA") || strstr(line1, "Tda") || strstr(line1, "tda")) {
+				      ct->jobtype = cteTDA;
+				      PRINTF("Calculation of Tunneling matrix elements through bridge.\n*******************************\n | ATTENTION: development version. only works for one specific peptide | \n ***************************** ");
+				    } else {
+				      if (strstr(line1, "GFS") || strstr(line1, "gfs") || strstr(line1, "Gfs") || strstr(line1, "GFD") || strstr(line1, "gfd") || strstr(line1, "Gfd")) {
+					ct->jobtype = ctePREZHDOSFHOPPING;
+					printf("Global Flux Surface Hopping\n");
+					if (strstr(line1, "GFD") || strstr(line1, "gfd") || strstr(line1, "Gfd")) {
+					  ct->decoherence = 1;
+					  PRINTF(" - correction for quantum decoherence switched on!\n");
+					} else {
+					  ct->decoherence = 0;
+					}
+				      } else {
+					PRINTF("Unknown job type for charge transfer, use one of:\n");
+					PRINTF("   SCCDYNAMIC, ADIABATIC, NON S C C, PARAMETERS, ADNON S C C, NOMOVEMENT, SFH (surface hopping), FER (dynamic with Fermi distribution),\n");
+					PRINTF("   FAD (ground state from Fermi mixture), FSH (Fermi-based surface hopping), TFS (Tully's fewest switches),\n");
+					PRINTF("   PER (Persico's surface hopping), PED (Persico's surface hopping with decoherence correction),\n");
+					PRINTF("   NGL (non-equilibrium Green's function calc. of current), NGN (dtto, non-self-consistent calculation),\n");
+					PRINTF("   ESP (calculation of electric potential only).\n");
+					PRINTF("Exiting!\n");
+					exit(-1);
+				      }
+				    }
+				  }
+				}
+			      }
+			    }
+			  }
 			}
-                      }
-                    }
-                  }
-                }
-              }
+		      }
+		    }
+		  }
+		}
+	      }
 	    }
 	  }
 	}
       }
     }
-  }
   }
   /* how often should the parameters be calculated? */
   if (ct->jobtype == ctePARAMETERS || ct->jobtype==cteNOMOVEMENT || ct->jobtype==cteESP || ct->jobtype==cteTDA) {
@@ -1445,6 +1450,46 @@ for (i=34; i<80; i++)
     snew(ct->surf_prob, ct->dim);
     ct->tfs_initialization_step = 1;
   }
+
+
+  /* DO HERE PREPARATIONS FOR TFL! */
+  if (ct->jobtype == cteTULLYLOC) {
+    ct->surface = 0;
+   
+    snew(ct->tfs_popul, 2*ct->dim); /* complex array: Re(0), Re(1), ..., Re(n-1), Im(0), Im(1), ..., Im(n-1) */
+    /* initial conditions - ground state occupied */
+    ct->tfs_popul[0] = 1.;     //changed if specific wf choosend as startign point                                                  
+    for (i=1; i<2*ct->dim; i++)
+      ct->tfs_popul[i] = 0.;
+    snew(ct->tfs_popul_der, 2*ct->dim); /* complex array */
+    snew(ct->tfs_vector, ct->dim); /* tfs_vector[n]: n-th eigenvector of the CG Hamiltonian */
+    snew(ct->tfs_vector[0], SQR(ct->dim));
+    for(j = 1; j < ct->dim; j++)
+      ct->tfs_vector[j] = ct->tfs_vector[0] + j * ct->dim;
+    snew(ct->tfs_vector_old, ct->dim); /* tfs_vector_old[n]: tfs_vector[n] in the previous time step */
+    snew(ct->tfs_vector_old[0], SQR(ct->dim));
+    for(j = 1; j < ct->dim; j++)
+      ct->tfs_vector_old[j] = ct->tfs_vector_old[0] + j * ct->dim;
+    snew(ct->tfs_overlap, ct->dim); /* tfs_overlap[j][k]: <tfs_vector_old[j] | tfs_vector[k]> */
+    snew(ct->tfs_overlap[0], SQR(ct->dim));
+    for(j = 1; j < ct->dim; j++)
+      ct->tfs_overlap[j] = ct->tfs_overlap[0] + j * ct->dim;
+    snew(ct->surf_prob, ct->dim);
+    ct->tfs_initialization_step = 1;
+    snew(ct->tfl_is_in_system,ct->dim);
+    snew(ct->tfl_is_in_system_old,ct->dim);
+    for(i=0;i<ct->dim;i++){ ct->tfl_is_in_system[i]=1; ct->tfl_is_in_system_old[i]=1; }
+    ct->tfl_num_of_states=ct->dim;
+    ct->tfl_num_of_states_old=ct->dim;
+   
+
+  }
+
+
+
+
+
+
 
   /* DO HERE PREPARATIONS FOR PREZHDO! */
   if (ct->jobtype == ctePREZHDOSFHOPPING) {
@@ -4626,6 +4671,439 @@ int do_tully_fewest_switches(charge_transfer_t *ct, dftb_broyden_t *broyd, doubl
   fprintf(f, "\n");
   return 0;
 }
+
+
+
+int do_tully_local(charge_transfer_t *ct, dftb_broyden_t *broyd, double *fermi_coeff, FILE *f, FILE *f2)
+{
+
+  //combination of flexible surface hopping (JPCL 2013, 4, 1888-1895) and modified hopping prob. calculation (JPCL 2014, 5, 713-719)
+
+  int i, j, k,l, step;
+  double old_energy, energy, energy1, energy2, *ham, fermi_energy, fermi_upper, fermi_lower;
+  double random_number; // in the interval (0,1)
+  double cumulated_probability; // sum of ct->surf_prob[0..k]
+  double popul_norm; // sum of SQR(ct->tfs_popul) except SQR(ct->tfs_popul[ct->surface])
+  double decay_time, current_surface_factor; // in the decoherence algorithm
+  double dot_product;
+ 
+ 
+  
+  ham = ct->hamiltonian_adiab;  
+
+ 
+// calculate the charges from the wave function
+  for (i=0; i<ct->dim; i++)
+    ct->q_act[i] = ct->q_old[i] = SQR(ct->wf[i]);
+
+  // copy as the first vector
+   energy = 1.e10;
+
+ 
+  ////////assemble hamiltonian 
+
+  k=0;
+  for(i=0;i<ct->dim;i++){
+    if(ct->tfl_is_in_system[i]){
+      l=0;
+      for(j=0;j<ct->dim;j++){
+	if(ct->tfl_is_in_system[j]){
+          ham[k+l*ct->tfl_num_of_states]=ct->hamiltonian[i][j];
+	  ham[l+k*ct->tfl_num_of_states]=ct->hamiltonian[j][i];
+	  l++; }
+      }
+      k++;  }
+  }
+
+  ///print out system
+  printf("Current system:\n");
+  for(i=0;i<ct->dim;i++)  printf("%d ",ct->tfl_is_in_system[i]);
+  printf("\n");
+
+
+    // printf("Hamiltonian:\n"); //debug                                                                                           
+    //for(i=0;i<ct->dim;i++) for(j=i;j<ct->dim;j++) printf("%8.5f \n",ct->hamiltonian[i][j]); //debug      
+
+
+    // diagonalize this Hamiltonian
+      dsyev(ct->tfl_num_of_states, ham, ct->ev_adiab, ct->work_adiab, 3*ct->dim);
+  
+   
+  
+  if (ct->tfs_initialization_step) {
+    /* let us start with tfs_vector_old == tfs_vector */
+    
+    for (i=0; i<ct->tfl_num_of_states_old; i++){
+      k=0;
+      for (j=0; j<ct->dim; j++){
+
+	 if(ct->tfl_is_in_system[j]){ ct->tfs_vector_old[i][j] = ham[i * ct->tfl_num_of_states_old + k]; k++;}
+        else ct->tfs_vector_old[i][j] = 0.;
+      }    
+    }   
+    for (; i<ct->dim; i++) for (j=0; j<ct->dim; j++)  ct->tfs_vector_old[i][j] = 0.;
+    ///determine inital surface which has maximal overlap with input wavefunction, if wf normed
+    dot_product=0.;  
+    for(i=0;i<ct->dim;i++) dot_product+=SQR(ct->wf[i]);
+    if(fabs(dot_product-1.0)<0.1){
+      int s_ind_max=0; 
+      double s_overlap_max=0.0;
+      for(i=0;i<ct->dim;i++){
+	dot_product=0.0;
+        for(j=0;j<ct->dim;j++) dot_product+=ct->tfs_vector_old[i][j]*ct->wf[j];
+	if(fabs(dot_product)>s_overlap_max){s_overlap_max=fabs(dot_product); s_ind_max=i;}
+      }
+      
+      ct->surface=s_ind_max;
+      ct->tfs_popul[0]=0.; ct->tfs_popul[ct->surface]=1.0;
+      printf("Input wavefunction is:\n");
+      for(j=0;j<ct->dim;j++) printf("%f ",ct->wf[j]);
+      printf("\n");
+      printf("Starting from state %d with overlap %f with input wavefunction\n",ct->surface,s_overlap_max);
+      //DEBUG
+      //printf("%d %d \n",ct->dim,ct->tfl_num_of_states);
+
+
+    } else{ printf("Wavefunction not normalized. Starting from lowest energy eigenstate\n"); }
+    /////////////
+    ct->tfs_initialization_step = 0;
+  } else {
+    /* push tfs_vector to tfs_vector_old */
+    for (i=0; i<ct->dim; i++)
+      for (j=0; j<ct->dim; j++)
+        ct->tfs_vector_old[i][j] = ct->tfs_vector[i][j];
+  }
+
+  /* enter new eigenvectors to tfs_vector */     
+  for(i=0;i<ct->tfl_num_of_states;i++){
+    k=0; 
+    for(j=0;j<ct->dim;j++){
+      if(ct->tfl_is_in_system[j]){ ct->tfs_vector[i][j] = ham[i * ct->tfl_num_of_states + k]; k++;}
+      else ct->tfs_vector[i][j] = 0;
+
+    }}
+  for (; i<ct->dim; i++) for (j=0; j<ct->dim; j++)  ct->tfs_vector[i][j] = 0;
+
+
+ 
+  /////Attention!!: number of old and new sites may differ. Account for this!
+
+
+
+  /* calculate tfs_overlap[i][j] = <tfs_vector_old[i] | tfs_vector[j]> */ 
+  for (i=0; i<ct->dim; i++)
+    for (j=0; j<ct->dim; j++) {
+      ct->tfs_overlap[i][j] = 0.;
+      
+      for (k=0; k<ct->dim; k++){ 
+	ct->tfs_overlap[i][j] += ct->tfs_vector_old[i][k] * ct->tfs_vector[j][k];
+	 
+      } 
+    }
+
+  //check signs
+  for(i=0;i<ct->dim;i++) if(ct->tfs_overlap[i][i]<-0.000000005) {
+      //ct->tfs_overlap[i][i]*=-1.0;
+      for(j=0;j<ct->dim;j++){ ct->tfs_vector[i][j]*=-1.0; ct->tfs_overlap[i][j]*=-1.0; ct->tfs_overlap[j][i]*=-1.0;}
+          ct->tfs_overlap[i][i]*=-1.0; //because it's corrected twice, hence wrong 
+ 
+  	}
+  ////
+
+
+ 
+
+  /* print out the overlap matrix */  //for now use this stream for pooulation based wave fct
+  printf( "Overlap matrix:\n");
+  for (i=0; i<ct->dim; i++)
+    for (j=0; j<ct->dim; j++)
+      printf( "%9.5f", ct->tfs_overlap[i][j]);
+  printf("\n");
+  
+
+  printf("Energy levels: \n");
+  for (k=0; k<ct->tfl_num_of_states; k++) printf("%9.5f",ct->ev_adiab[k]);
+  printf("\n");
+
+
+  //////////////check if time step need to be adapted   //not yet included in this version
+  //  if(ct->tfl_adap_dt){  
+  //
+  // ct->tfl_inc_or_dec=1;
+    //for(i=0;i<ct->dim;i++){
+  //   if(fabs(ct->tfs_overlap[ct->surface][ct->surface])<TFL_CRITICAL_OVERLAP){
+  //	if(ct->rk_timestep/=TFL_DEC>TFL_MIN_STEP) {ct->rk_timestep/=TFL_DEC; ct->tfl_inc_or_dec=-1;} else {ct->tfl_inc_or_dec=0;} 
+  //	/*break;*/}
+//  else{ if(fabs(ct->tfs_overlap[ct->surface][ct->surface])<TFL_SAFE_OVERLAP){ct->tfl_inc_or_dec=0; /*break;*/}}
+      //}
+
+//  if(ct->tfl_inc_or_dec==1){ 
+//    if(ct->rk_timestep*TFL_INC<ct->tfl_max_dt) ct->rk_timestep*=TFL_INC;
+//    else ct->tfl_inc_or_dec=0;     
+//  }
+//  printf("Current timestep: %f \n",ct->rk_timestep/PS_TO_AU);
+//    ct->tfl_time+=(ct->rk_timestep/PS_TO_AU);
+//}//end if(tfl_adap_dt)
+  ///////////////////////////7
+ 
+
+  printf("Populations before propagation:\n");
+  for (k=0; k<ct->dim; k++){
+    //fprintf(f, "%9.6f", SQR(ct->tfs_popul[k]) + SQR(ct->tfs_popul[ct->dim + k]));  //tfs_popul complex, thus two summands       
+   
+    printf("%9.6f", SQR(ct->tfs_popul[k]) + SQR(ct->tfs_popul[ct->dim + k]));
+  }
+  printf("\n");
+
+
+
+  //store current surface popul.
+  ct->tfl_ca_real=ct->tfs_popul[ct->surface];
+  ct->tfl_ca_im=ct->tfs_popul[ct->surface+ct->dim];
+
+
+  /* integrate tfs_popul for one step
+   * (the procedure will use tfs_popul_der)
+   */
+  do_rksuite_tfs(ct);
+
+  /* print out new populations */
+  printf("Populations after propagation:\n");
+  for (k=0; k<ct->dim; k++){
+    fprintf(f, "%9.6f", SQR(ct->tfs_popul[k]) + SQR(ct->tfs_popul[ct->dim + k]));  //tfs_popul complex, thus two summands
+    printf("%9.6f", SQR(ct->tfs_popul[k]) + SQR(ct->tfs_popul[ct->dim + k]));
+  }
+  printf("\n");
+  
+  popul_norm=0.;
+  for (k=0; k<ct->dim; k++) popul_norm+=SQR(ct->tfs_popul[k]) + SQR(ct->tfs_popul[ct->dim + k]);
+  printf("Population norm: %9.6f\n",popul_norm);
+  //correct norm. RK not unitary!!!!
+  popul_norm=sqrt(popul_norm);
+  for (k=0; k<ct->dim; k++){
+    ct->tfs_popul[k]/=popul_norm; ct->tfs_popul[k+ct->dim]/=popul_norm;
+  }
+
+
+
+  printf("Current surface: %d \n",ct->surface);
+  /* we are on ct->surface at the moment
+   * now, go over all of the other states,
+   * and calculate switching probability */
+  
+  /////////do hopping//////////////////////
+
+  ///conventional form
+   ct->surf_prob[ct->surface] = 0.;
+  for (j=0; j<ct->dim; j++) if (j != ct->surface)
+    ct->surf_prob[j] = -2 * (ct->tfs_popul[ct->surface] * ct->tfs_popul[j] + ct->tfs_popul[ct->dim + ct->surface] * ct->tfs_popul[ct->dim + j]) / (SQR(ct->tfs_popul[ct->surface]) + SQR(ct->tfs_popul[ct->dim + ct->surface]))*ct->tfs_overlap[j][ct->surface];
+			   
+////////////////////
+
+
+    
+/* use the trick by Hammes-Schiffer and Tully, JCP 101, 4657 (1994) */
+//   for (j=0; j<ct->dim; j++) if (j != ct->surface)
+//    ct->surf_prob[j] *= -2. * ct->rk_timestep * ct->tfs_overlap[j][ct->surface]
+//                      / (SQR(ct->tfs_popul[ct->surface]) + SQR(ct->tfs_popul[ct->dim + ct->surface]));
+
+
+  /* write out the probabilities */
+  printf("transition probabilities: \n");
+  for (k=0; k<ct->dim; k++)
+  printf("%10.6f", ct->surf_prob[k]);   //these are the transition probabilities //JJK
+  printf("\n"); 
+
+  //determine state with least energy difference to current surface for special treatment
+  int tfl_min_diff_ind=0;
+  double tfl_min_en_diff=1.0e10;
+  for(i=0;i<-ct->tfl_num_of_states;i++) if(i!=ct->surface){
+      double dummy_en_diff=fabs(ct->ev_adiab[i]-ct->ev_adiab[ct->surface]);
+      if(dummy_en_diff<tfl_min_en_diff){
+	tfl_min_en_diff=dummy_en_diff;
+	tfl_min_diff_ind=i;
+      }
+    }
+
+  /* generate a random number */
+  random_number = rand()/(double)RAND_MAX;
+  cumulated_probability = 0.;
+  double tfl_overall_sum=0;
+    double tfl_overall_hopping_prob=(SQR(ct->tfl_ca_real)+SQR(ct->tfl_ca_im)-SQR(ct->tfs_popul[ct->surface])-SQR(ct->tfs_popul[ct->surface+ct->dim]))/(SQR(ct->tfl_ca_real)+SQR(ct->tfl_ca_im)-SQR(ct->tfs_popul[ct->surface]));
+  int old_surf=ct->surface; //for output of prob. not to hop  
+
+
+  ///old hopping routine  
+  /* /\* and determine the surface to continue on *\/    */
+  /* for (j=0; j<ct->dim; j++) if (j != ct->surface && ct->surf_prob[j] > 0.) { */
+  /*   cumulated_probability += ct->surf_prob[j]; */
+  /*   if (cumulated_probability > random_number) { */
+  /*     ct->surface = j; */
+  /*     break; */
+  /*   } */
+  /* } */
+
+
+  //////new hopping routine
+  for(j=0;j<ct->tfl_num_of_states;j++) if(j!=ct->surface&&j!=tfl_min_diff_ind) tfl_overall_sum+=ct->surf_prob[j];
+  ct->surf_prob[tfl_min_diff_ind]=tfl_overall_hopping_prob-tfl_overall_sum;
+
+   
+  if(tfl_overall_hopping_prob<1.0) tfl_overall_hopping_prob=1.0;
+
+  int tfl_old_surface=ct->surface;
+  for (j=0; j<ct->dim; j++) if (j != ct->surface && ct->surf_prob[j] > 0.) {
+      cumulated_probability += ct->surf_prob[j]/tfl_overall_hopping_prob;  //in case we're late with hopping prob.>1 
+	if (cumulated_probability > random_number) { 
+	  ct->surface = j; 
+	  break; 
+	}
+
+    }
+
+  ////decoherence: collaps wave function
+
+  if(tfl_old_surface!=ct->surface){   
+    for(i=0;i<2*ct->dim;i++) ct->tfs_popul[i]=0;
+    ct->tfs_popul[ct->surface]=1.0;
+  }
+  ////
+
+
+  ///////////////////////////////////////////end hopping
+
+  //output probability to stay on surface                                            
+  printf("Surface hopping information:\n");                                              
+  for (j++; j<ct->dim; j++) if (j != old_surf && ct->surf_prob[j] > 0.)
+					  cumulated_probability += ct->surf_prob[j];
+  printf("Probability to remain on the current surface: %10.6f \n",1.0-cumulated_probability);
+  printf("Did hop: "); if (old_surf==ct->surface) printf("no\n"); else printf("yes, hopped to %d \n",ct->surface);
+
+  
+
+
+  ////update system ///////////////////////
+  
+  //////////determine which sites need to be included
+  ct->tfl_num_of_states_old=ct->tfl_num_of_states;
+  for(i=0;i<ct->dim;i++) ct->tfl_is_in_system_old[i]=ct->tfl_is_in_system[i]; //copy current to old
+  ct->tfl_num_of_states=0;
+  for(i=0;i<ct->dim;i++){
+  //calc. <phi_surface|i>
+    double phixi=0.;
+    for(j=0;j<ct->dim;j++)
+      phixi+=ct->tfs_vector[ct->surface][j]*ct->hamiltonian[i][j];
+    phixi=fabs(phixi); 
+    //calc. <phi_surface|H|phi_surface>-<i|H|j|i>
+    double tfl_en_diff=fabs(ct->ev_adiab[ct->surface]-ct->hamiltonian[i][i]);
+    if(phixi/tfl_en_diff>TFL_RC) {ct->tfl_is_in_system[i]=1; ct->tfl_num_of_states++;} else ct->tfl_is_in_system[i]=0;
+  }
+  int tfl_did_sys_change=0;
+  for(i=0;i<ct->dim;i++) if(ct->tfl_is_in_system[i]!=ct->tfl_is_in_system_old[i]){tfl_did_sys_change=1; break;}
+  //recalc. Eigenstates and choose appropriate surface
+  if(tfl_did_sys_change){
+  
+    k=0;
+    for(i=0;i<ct->dim;i++){
+      if(ct->tfl_is_in_system[i]){
+	l=0;
+	for(j=0;j<ct->dim;j++){
+	  if(ct->tfl_is_in_system[j]){
+	    ham[k+l*ct->tfl_num_of_states]=ct->hamiltonian[i][j];
+	    ham[l+k*ct->tfl_num_of_states]=ct->hamiltonian[j][i];
+	    l++; }
+	}
+	k++;  }
+    }
+
+
+    dsyev(ct->tfl_num_of_states, ham, ct->ev_adiab, ct->work_adiab, 3*ct->dim);
+
+
+    double *old_surf_vec=(double*)malloc(sizeof(double)*ct->dim);  //vec. to store surf. state.
+    for(i=0;i<ct->dim;i++) old_surf_vec[i]=ct->tfs_vector[ct->surface][i];
+
+
+    for(i=0;i<ct->tfl_num_of_states;i++){
+      k=0; 
+      for(j=0;j<ct->dim;j++){
+	if(ct->tfl_is_in_system[j]){ ct->tfs_vector[i][j] = ham[i * ct->tfl_num_of_states + k]; k++;}
+	else ct->tfs_vector[i][j] = 0;
+
+      }}
+    for (; i<ct->dim; i++) for (j=0; j<ct->dim; j++)  ct->tfs_vector[i][j] = 0;
+
+
+
+    /////find which new state is surface by selecting the one with max overlap
+    double maximum_overlap=0.;
+    int max_index=0;
+    for(i=0;i<ct->tfl_num_of_states;i++){
+    dot_product=0;     
+      for(k=0;k<ct->dim;k++) dot_product+=old_surf_vec[k]*ct->tfs_vector[i][k];
+      //dot_product=fabs(dot_product);
+      if(fabs(dot_product)>maximum_overlap){maximum_overlap=fabs(dot_product); max_index=i;}
+
+    }///////////////
+    ct->surface=max_index;
+    if(dot_product<0.) for(j=0;j<ct->dim;j++) ct->tfs_vector[ct->surface][j]*=-1.0; //check sign
+    printf("Surface in new system is: %d \n",ct->surface);
+
+    free(old_surf_vec);  //clear mem.  
+
+ //take care of populations //collapse wave function for now
+    for(i=0;i<2*ct->dim;i++) ct->tfs_popul[i]=0.0;
+    ct->tfs_popul[ct->surface]=1.0;
+    ///
+    
+  }
+  /////end recalc.
+
+  ////////////////////end update system
+
+
+  /* assign the new wave function to the eigenvector ct->surface */
+ 
+  printf("The new wavefunction is:\n"); 
+    for (i=0; i<ct->dim; i++){
+      ct->wf[i] = ct->tfs_vector[ct->surface][i];
+      printf("%f ",ct->wf[i]);
+    }
+  printf("\n");
+  
+
+  //print out eigenvalues to file //JJK
+  for (k=0; k<ct->tfl_num_of_states_old; k++) fprintf(f2,"%9.5f",ct->ev_adiab[k]);   //in_system already updated at this point
+  fprintf(f2,"\n");
+  
+
+  printf("TFL Info: System did "); 
+  if(tfl_did_sys_change==1) printf("change.\n");
+  else printf("not change.\n");
+
+//debug //print eigenvectors
+  printf("Eigenvectors: \n");
+  for(i=0;i<ct->dim;i++){
+    for(j=0;j<ct->dim;j++) printf("%9.5f ",ct->tfs_vector[i][j]);
+    printf("\n");  
+  }
+
+
+  /* print out current state */
+  /* fprintf(f, " %d", ct->surface);
+  for (i=0; i<ct->dim; i++) {
+    fprintf(f, "%8.4f", SQR(ct->wf[i]));
+  }*/
+  fprintf(f, "\n");
+  return 0;
+}
+
+
+
+
+
+
+
 
 int do_persico_diabatic_sfhopping(charge_transfer_t *ct, dftb_broyden_t *broyd, double *fermi_coeff, FILE *f, FILE *f2)
 {

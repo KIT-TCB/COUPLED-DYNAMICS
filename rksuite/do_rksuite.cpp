@@ -1,6 +1,6 @@
 #include "rksuite.h"
 
-#define TFS_DIV_INTERVAL (1000)
+#define TFS_DIV_INTERVAL (15000)
 
 #define NEG_IMAG_POT (1.e-3)
 
@@ -176,7 +176,14 @@ typedef struct {
   double **tfs_vector_old; /* adiab. states in the previous step phi_k(t) */
   double **tfs_overlap;    /* <phi_k(t) | phi_j(t+dt)> */
   int tfs_initialization_step; /* is this the first step of a surface hopping simulation? */
-  /* variables for Persico's local diabatic surface hopping */
+ //variables for flexible surface hopping                                                                                         
+  int tfl_num_of_states; //current number of sites in sys.                                                                          
+  int tfl_num_of_states_old;  //# of sites at last step                                                                             
+  int *tfl_is_in_system; //...[i]==1 if site i in sys., otherwise ...[i]==0                                                         
+  int *tfl_is_in_system_old;  //at last step                                                                                        
+  double tfl_ca_real;   //coef. of surface before integration (real part)                                                         
+  double tfl_ca_im;    //(imaginary part)                                
+/* variables for Persico's local diabatic surface hopping */
   twodoubles **per_propag_operator; /* exp[-i*Z*dt] */
   twodoubles **per_transformator;   /* U = T^t * exp[-i*Z*dt] */
   ct_per_orthogo_t *per_arrays;

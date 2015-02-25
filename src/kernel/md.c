@@ -880,16 +880,16 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
           f_ct_esp = fopen("CT_ESP.xvg", "w");
         }
         if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteNONSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteADNONSCC || ct->jobtype == cteSURFACEHOPPING || 
-              ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==cteNEGFLORENTZ || ct->jobtype==cteNEGFLORENTZNONSCC || ct->jobtype==ctePREZHDOSFHOPPING) {
+              ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==cteNEGFLORENTZ || ct->jobtype==cteNEGFLORENTZNONSCC || ct->jobtype==ctePREZHDOSFHOPPING) {
           f_tb_occupation = fopen("TB_OCCUPATION.xvg", "w");
           f_tb_com = fopen("TB_COM.xvg", "w");
         }
         if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteNONSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteADNONSCC || ct->jobtype==cteNOMOVEMENT || ct->jobtype == cteSURFACEHOPPING || 
-              ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES || ct->jobtype==ctePERSICOSFHOPPING) {
+              ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING) {
           f_ct_energy = fopen("CT_ENERGY.xvg", "w");
         }
         if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteNOMOVEMENT || ct->jobtype == cteSURFACEHOPPING ||
-              ct->jobtype == cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES || ct->jobtype==ctePERSICOSFHOPPING ||
+              ct->jobtype == cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING ||
               ct->jobtype==cteNEGFLORENTZ) {
           f_tb_hamiltonian_hub = fopen("TB_HAMILTONIAN_HUB.xvg", "w");
           f_tb_hubbard = fopen("TB_HUBBARD.xvg", "w");
@@ -901,7 +901,7 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
           snew(ct->q_old, ct->dim);
         }
         if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteNONSCCDYNAMIC || ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || 
-              ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==cteNOMOVEMENT || ct->jobtype==ctePREZHDOSFHOPPING) { //we need here also NOMOVEMENT if no correct wave function is specified and one has to take lowest eigenvalue instead
+              ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==cteNOMOVEMENT || ct->jobtype==ctePREZHDOSFHOPPING) { //we need here also NOMOVEMENT if no correct wave function is specified and one has to take lowest eigenvalue instead
           snew(ct_broyden, 1);
           ct_init_broyden(ct, ct_broyden);
           snew(ct->q_act, ct->dim);
@@ -916,10 +916,10 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
         if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteNONSCCDYNAMIC || ct->jobtype==cteFERMI) {
           f_ct_exp_adiab = fopen("CT_EXPANS_IN_ADIAB_STATES.xvg", "w");
         }
-        if (ct->jobtype==cteSURFACEHOPPING || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==ctePREZHDOSFHOPPING) {
+        if (ct->jobtype==cteSURFACEHOPPING || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==ctePREZHDOSFHOPPING) {
           f_ct_surfacehopping = fopen("CT_SURFACE_HOPPING.xvg", "w");
         }
-        if (ct->jobtype==cteTULLYFEWESTSWITCHES || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==ctePREZHDOSFHOPPING) {
+        if (ct->jobtype==cteTULLYFEWESTSWITCHES ||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==ctePREZHDOSFHOPPING) {
           f_ct_nonadiab_coupling = fopen("CT_NONADIAB_COUPLING.xvg", "w");
           f_ct_state_vectors = fopen("CT_STATE_VECTORS.xvg", "w");
         }
@@ -1632,7 +1632,7 @@ if(GIESEPEPTIDE){
   // CONSTRUCT THE HUBBARD MATRIX //            now here because hubbard matrix depends on delta_q calculated by get_delta_q.
 
   if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteNOMOVEMENT || ct->jobtype == cteSURFACEHOPPING ||
-       ct->jobtype == cteFERMI || ct->jobtype == cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype == cteFERMISFHOPPING || ct->jobtype == cteTULLYFEWESTSWITCHES || ct->jobtype == ctePERSICOSFHOPPING) {
+       ct->jobtype == cteFERMI || ct->jobtype == cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype == cteFERMISFHOPPING || ct->jobtype == cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype == ctePERSICOSFHOPPING) {
     // diag: Hubbard params of nucleobases (constant - do not calculate)
 /*
     // offdiag: 1/r_ij for nucleobases (original code)
@@ -1701,7 +1701,7 @@ if(GIESEPEPTIDE){
  // */
 
    if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteNOMOVEMENT || ct->jobtype==cteSURFACEHOPPING ||
-         ct-> jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES || ct->jobtype==ctePERSICOSFHOPPING ||
+         ct-> jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING ||
          ct->jobtype==cteNEGFLORENTZ) {
      fprintf(f_tb_hamiltonian_hub, "%10d", step);
      fprintf(f_tb_hubbard, "%10d", step);
@@ -1825,6 +1825,10 @@ if(GIESEPEPTIDE){
        fprintf(f_ct_nonadiab_coupling, "%10d ", step);
        do_tully_fewest_switches(ct, ct_broyden, ct_broyden->df, f_ct_surfacehopping, f_ct_nonadiab_coupling);
        break;
+     case cteTULLYLOC:
+       printf(f_ct_surfacehopping, "%10d ", step);   //maybe replace step with time,mabye move into function                        
+       fprintf(f_ct_nonadiab_coupling, "%10d ", step);
+       do_tully_local(ct, ct_broyden, ct_broyden->df, f_ct_surfacehopping, f_ct_nonadiab_coupling);
      case ctePERSICOSFHOPPING:
        fprintf(f_ct_surfacehopping, "%10d ", step);
        fprintf(f_ct_nonadiab_coupling, "%10d ", step);
@@ -1879,7 +1883,7 @@ if(GIESEPEPTIDE){
    }
 
    if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteNONSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteADNONSCC || ct->jobtype==cteSURFACEHOPPING ||
-         ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==cteNEGFLORENTZ || ct->jobtype==cteNEGFLORENTZNONSCC || ct->jobtype==ctePREZHDOSFHOPPING) {
+         ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==cteNEGFLORENTZ || ct->jobtype==cteNEGFLORENTZNONSCC || ct->jobtype==ctePREZHDOSFHOPPING) {
      /* calculate and print out the occupations */
      ct->survival = 0.0;
      fprintf(f_tb_occupation, "%10f", t*1000); //1000=converting ps to fs 
@@ -1925,7 +1929,7 @@ if(GIESEPEPTIDE){
    } /* if (ct_mpi_rank == 0) */
 
    if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteNONSCCDYNAMIC || ct->jobtype==cteADNONSCC || ct->jobtype==cteSURFACEHOPPING || 
-         ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES || ct->jobtype==ctePERSICOSFHOPPING ||
+         ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING ||
          ct->jobtype==cteNEGFLORENTZ) {
      /* communicate the occupations to the slaves */
      if (ct_mpi_rank == 0) {
@@ -1955,7 +1959,7 @@ if(GIESEPEPTIDE){
   } /* initial if */
 
   if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteNOMOVEMENT || ct->jobtype==cteSURFACEHOPPING || 
-        ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==cteNEGFLORENTZ) {
+        ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==cteNEGFLORENTZ) {
     /* map the hole on the atomic charges - first check the charges */
     counter=0;
     for (i=0; i<ct->sites; i++) {
@@ -2967,7 +2971,7 @@ if(GIESEPEPTIDE){
         if (ct_mpi_rank == 0) {
 #endif
         if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteNOMOVEMENT || ct->jobtype == cteSURFACEHOPPING || 
-              ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES || ct->jobtype==ctePERSICOSFHOPPING) {
+              ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING) {
          /* calculate the QM energy
           * attention - the correct expression must be used for that!
           * THIS MAY BE WRONG FOR cteFERMI, WHERE WE MIX THE ADIABATIC STATES AND
