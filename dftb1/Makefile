@@ -1,5 +1,5 @@
 #CC= icc
-CC= gcc
+#CC= gcc
 CCOPTS=  -I../include -I../src/kernel -I. 
 #LDOPTS= -lm
 #LDOPTS= -lblas -llapack

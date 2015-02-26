@@ -1,4 +1,5 @@
-CXX= g++
+#CXX= g++
+#CXX=icpc
 CXXOPTS= -O2 -Wall -pedantic -g
 OBJ= do_rksuite.o rksuite.o
 

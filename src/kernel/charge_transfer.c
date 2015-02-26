@@ -6935,11 +6935,11 @@ printf("overlap ortho/ortho (hybrid matrix)\n");
   //}
 
 
-///*
+/*
          printf("Wave function before proj %d:\n", step);
          for (i=0; i<ct->dim; i++)
            printf("%10.7f %10.7f\n", ct->wf[i], ct->wf[i + ct->dim]);
-//*/
+*/
 
   // get new wf by projecting old wf onto new basis. element i is now:
   // wf_i(t2) =       |fo_i(t2)><fo_i(t2)|wf(t1)>
@@ -6963,11 +6963,11 @@ printf("overlap ortho/ortho (hybrid matrix)\n");
   for (i=0; i < 2*ct->dim; i++) 
     ct->wf[i] /= sqrt(norm); 
 
-///*
+/*
          printf("Wave function  after proj %d:\n", step);
          for (i=0; i<ct->dim; i++)
            printf("%10.7f %10.7f\n", ct->wf[i], ct->wf[i + ct->dim]);
-//*/
+*/
   
   // save wave function for next step //
   for (iao=0; iao < dftb->phase2.norb; iao++)

@@ -1,0 +1,42 @@
+#####################################################################################
+## Hints for the installation of the charge-transfer code on HPC clusters like IC2 ##
+#####################################################################################
+
+
+# Newer version of cmake is needed
+module load cmake
+
+
+# Load MKL (MKL is later also needed during runtime. Consider loading it by default via .bashrc)
+module load mkl
+
+
+# Intel compiler is loaded by default. if not...
+module load intel
+# but you have to set up compiler environment to select MKL 64bit 
+source /opt/intel/composer_xe_2013_sp1.4.211/bin/compilervars.sh intel64
+
+
+# We will use FFTW for FFT instead of MKL, because NEGF-part of the code uses FFTW and had to be recompiled when MKL is used. This didn't work easily since NEGF-part doesn't work at the moment.
+module load fftw
+
+
+#probably it is also better to use this, since everything else is also compiled with intel
+module load openmpi/1.8.4_intel
+
+
+# Path to static library needed for C++ might have to be changed.
+# Alter in the source file repository (COUPLED-DYNAMICS/src/kernel/CMakeLists.txt) the location of the imported libstdc++.a library. 
+# for TCB-server:
+set_target_properties(libstdc++ PROPERTIES IMPORTED_LOCATION /usr/lib/gcc/x86_64-linux-gnu/4.4/libstdc++.a)
+# for IC2:
+set_target_properties(libstdc++ PROPERTIES IMPORTED_LOCATION /opt/gcc_4.4/lib64/libstdc++.a) 
+
+
+# compile with MPI but without OPENMP. QM part uses only MPI parallelization and otherwise mdrun will take all available ressources if -ntomp is not specified.
+cmake ../COUPLED-DYNAMICS -DGMX_MPI=ON -DGMX_OPENMP=OFF
+
+
+# Compiling with MKL still doesn't work with standard cmake configurations. Add to the compiler options CMAKE_C_FLAGS:
+-I/opt/intel/composer_xe_2013_sp1.4.211/mkl/include -mkl
+# ...either by editing CMakeCache.txt by hand or by using "ccmake ." in the build directory.

@@ -1700,9 +1700,9 @@ if(GIESEPEPTIDE){
   }
  // */
 
-   if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteNOMOVEMENT || ct->jobtype==cteSURFACEHOPPING ||
+   if (ct->sic > 0.0 && (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteNOMOVEMENT || ct->jobtype==cteSURFACEHOPPING ||
          ct-> jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING ||
-         ct->jobtype==cteNEGFLORENTZ) {
+         ct->jobtype==cteNEGFLORENTZ) ) {
      fprintf(f_tb_hamiltonian_hub, "%10d", step);
      fprintf(f_tb_hubbard, "%10d", step);
      for (i=0; i<ct->dim; i++) {
@@ -1901,7 +1901,7 @@ if(GIESEPEPTIDE){
      /*print out the center of mass (in angstrom) of each site. needed for following the charge through amorphous materials*/
      fprintf(f_tb_com, "%10d", step);
      for (i=0; i<ct->sites; i++) 
-       fprintf(f_tb_com, "%12.4f %12.4f %12.4f", 10*dftb->phase1[i].com[0]/NM_TO_BOHR, 10*dftb->phase1[i].com[1]/NM_TO_BOHR, 10*dftb->phase1[i].com[2]/NM_TO_BOHR); //coordinates of COM in Angstrom
+       fprintf(f_tb_com, "%8.2f %8.2f %8.2f   ", 10*dftb->phase1[i].com[0]/NM_TO_BOHR, 10*dftb->phase1[i].com[1]/NM_TO_BOHR, 10*dftb->phase1[i].com[2]/NM_TO_BOHR); //coordinates of COM in Angstrom
      fprintf(f_tb_com, "\n");
 
    }
