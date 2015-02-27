@@ -1679,11 +1679,7 @@ if(GIESEPEPTIDE){
    switch (ct->jobtype) {
      case cteSCCDYNAMIC:
      case cteNONSCCDYNAMIC:
-       if (ct->dim > ct->sites){
-         printf("start project at %f\n", (double) clock()/CLOCKS_PER_SEC);
-         project_wf_on_new_basis(step, dftb, ct, f_ct_project_wf, f_ct_project_wf_ref );
-         printf("stop project at %f\n", (double) clock()/CLOCKS_PER_SEC);
-       }
+ 
        /* evaluate the amount of annihilated charge due to neg. imag. potentials */
        for (i=0; i<ct->neg_imag_pot; i++)
          ct->site_annihilated_occupation[i] += 2 * ct->neg_imag_pot_rate_constant * PS_TO_AU * ct->occupation[ct->site_neg_imag_pot[i]] * ir->delta_t;
@@ -1710,6 +1706,13 @@ if(GIESEPEPTIDE){
        /* SCC dynamics -- perform the integration with RKsuite
         * (the neg-imag-potential capability is included in do_rksuite() )
         */
+     
+      if (ct->dim > ct->sites){
+         printf("start project at %f\n", (double) clock()/CLOCKS_PER_SEC);
+         project_wf_on_new_basis(step, dftb, ct, f_ct_project_wf, f_ct_project_wf_ref );
+         printf("stop project at %f\n", (double) clock()/CLOCKS_PER_SEC);
+       }
+
 
        do_rksuite(ct);
        /* the coefficients of decomposition into adiabatic states */
