@@ -553,9 +553,11 @@ void ct_init_broyden(charge_transfer_t *ct, dftb_broyden_t *broy);
 
 #ifdef GMX_MPI
 void do_dftb_phase1(charge_transfer_t *ct, dftb_t *dftb, MPI_Comm ct_mpi_comm, int ct_mpi_rank, int ct_mpi_size);
+void get_MM_params(charge_transfer_t *ct, dftb_t *dftb, MPI_Comm ct_mpi_comm, int ct_mpi_rank, int ct_mpi_size);
 void do_esp_only(charge_transfer_t *ct, dftb_t *dftb, real *q, MPI_Comm ct_mpi_comm, int ct_mpi_rank, int ct_mpi_size);
 #else
 void do_dftb_phase1(charge_transfer_t *ct, dftb_t *dftb);
+void get_MM_params(charge_transfer_t *ct, dftb_t *dftb);
 void do_esp_only(charge_transfer_t *ct, dftb_t *dftb, real *q);
 #endif
 void do_dftb_phase2(charge_transfer_t *ct, dftb_t *dftb);
@@ -613,3 +615,4 @@ void additional_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer
 void additional_gradient_homo_new(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t *ct, int site_i);
 double do_born_oppenheimer(charge_transfer_t *ct, dftb_broyden_t *broyd, double *fermi_coeff, FILE *f);
 int do_prezhdo_sfhopping(charge_transfer_t *ct, dftb_broyden_t *broyd, double *fermi_coeff, FILE *f, FILE *f2, FILE *f3);
+void adapt_QMzone(charge_transfer_t *ct, rvec *x_ct);

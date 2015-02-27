@@ -1370,42 +1370,6 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
 	     do_esp_only(ct, dftb, mdatoms->chargeA, ct_mpi_comm, ct_mpi_rank, ct_mpi_size);
 	   }
 
-	   /* WAIT
-	   // int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm);
-	   if (ct_mpi_size > 1) {
-	     MPI_Gather((void*) &nprocessed, 1, MPI_INT, (void*) ct_mpi_gathered, 1, MPI_INT, 0, ct_mpi_comm);
-	     if (ct_mpi_rank == 0) {
-	       printf("Master: the announced numbers of processed nucleobases: ");
-	       for (i=0; i<ct_mpi_size; i++) printf("%d ", ct_mpi_gathered[i]);
-	       printf("\n");
-	     }
-	   } */
-
-	   /*if (ct_mpi_rank==0) {
-	     for (i=0; i<ct->sites; i++)
-	       if (i % ct_mpi_size != 0) {
-		 if (ct->jobtype != cteESP) {
-		   return_value = MPI_Recv(dftb->phase1[i].a[0], SQR(dftb->phase1[i].norb), MPI_DOUBLE, i % ct_mpi_size, 100 + i * 6, ct_mpi_comm, &ct_mpi_status);
-		   // if (!return_value) printf("Receive of array a, nucleobase %d from rank %d at master finished\n", i, i % ct_mpi_size);
-		   return_value = MPI_Recv(dftb->phase1[i].qmat, dftb->phase1[i].nn, MPI_DOUBLE, i % ct_mpi_size, 101 + i * 6, ct_mpi_comm, &ct_mpi_status);
-		   // if (!return_value) printf("Receive of array qmat, nucleobase %d from rank %d at master finished\n", i, i % ct_mpi_size);
-		   return_value = MPI_Recv(dftb->phase1[i].ev, dftb->phase1[i].norb, MPI_DOUBLE, i % ct_mpi_size, 102 + i * 6, ct_mpi_comm, &ct_mpi_status);
-		   // if (!return_value) printf("Receive of array ev, nucleobase %d from rank %d at master finished\n", i, i % ct_mpi_size);
-	//	   return_value = MPI_Recv(dftb->phase1[i].overl[0], SQR(dftb->phase1[i].norb), MPI_DOUBLE, i % ct_mpi_size, 104 + i * 6, ct_mpi_comm, &ct_mpi_status); //needed for project_wf and get_delta_q
-	//	   return_value = MPI_Recv(dftb->phase1[i].occ, dftb->phase1[i].norb, MPI_DOUBLE, i % ct_mpi_size, 105 + i * 6, ct_mpi_comm, &ct_mpi_status);  //needed for get_delta_q
-
-		 }
-		 if (ct->qmmm == 3) {
-		   return_value = MPI_Recv(&(dftb->phase1[i].esp), 1, MPI_DOUBLE, i % ct_mpi_size, 103 + i * 6, ct_mpi_comm, &ct_mpi_status);
-		   // if (!return_value) printf("Receive of value esp, nucleobase %d from rank %d at master finished\n", i, i % ct_mpi_size);
-		 }
-	       }
-	     if (ct->jobtype != cteESP) {
-	       // check_and_invert_orbital_phase(dftb->phase1, ct->sites, ct->homo, f_ct_orbital, step); absorbed in sort_mobasis
-	       do_dftb_phase2(ct, dftb);
-	     }
-           }*/
-
            // broadcast the results if all calculations have finished. broadcaster is rank "i % ct_mpi_size" (there was phase1 performed) 
            MPI_Barrier(ct_mpi_comm);
            for (i=0; i<ct->sites; i++){
@@ -1413,21 +1377,12 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
            MPI_Bcast(dftb->phase1[i].a[0], SQR(dftb->phase1[i].norb),          MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);//needed to build the coarse grained hamilton matrix at main node
            MPI_Bcast(dftb->phase1[i].qmat, dftb->phase1[i].nn,                 MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);// "
            MPI_Bcast(dftb->phase1[i].ev, dftb->phase1[i].norb,                 MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);// "
-           MPI_Bcast(ct->site[i].delta_q[0], ct->site[i].homos*ct->site[i].atoms, MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm); //needed to build the hubbard matrix at main node
-           if ( ct->do_lambda_i==2 )
-             MPI_Bcast(dftb->phase1[i].grad[0], 3*dftb->phase1[i].nn,  	       MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);//needed to add forces for explicit lambda_i //try to send rvec -> 3*double. have to test
-           if (ct->qmmm == 3) 
-             MPI_Bcast(&(dftb->phase1[i].esp), 1,  MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);
            //printf("after Bcast at rank %d at %f\n",i % ct_mpi_size, (double) clock()/CLOCKS_PER_SEC);
            }
            MPI_Barrier(ct_mpi_comm); //wait until broadcasting has finished
+
 	   if (ct_mpi_rank == 0 && ct->jobtype != cteESP) 
              do_dftb_phase2(ct, dftb);
-           if (ct->dim > ct->sites && ct->jobtype==cteSCCDYNAMIC){
-             printf("start project at %f\n", (double) clock()/CLOCKS_PER_SEC);
-             project_wf_on_new_basis(step, dftb, ct, f_ct_project_wf, f_ct_project_wf_ref );
-             printf("stop project at %f\n", (double) clock()/CLOCKS_PER_SEC);
-           }
 
 /*
 printf("S^{-1/2}\n");
@@ -1461,8 +1416,6 @@ printf("\n");
 	     // check_and_invert_orbital_phase(dftb->phase1, ct->sites, ct->homo, f_ct_orbital, step); absorbed in sort_mobasis
 	     /* copying of charges and PME for 2nd phase comes here !!! */
 	     do_dftb_phase2(ct, dftb);
-	     if (ct->jobtype==cteSCCDYNAMIC)
-	       project_wf_on_new_basis(step, dftb, ct, f_ct_project_wf, f_ct_project_wf_ref );
 	   } else {
 	     do_esp_only(ct, dftb, mdatoms->chargeA);
 	   }
@@ -1726,6 +1679,11 @@ if(GIESEPEPTIDE){
    switch (ct->jobtype) {
      case cteSCCDYNAMIC:
      case cteNONSCCDYNAMIC:
+       if (ct->dim > ct->sites){
+         printf("start project at %f\n", (double) clock()/CLOCKS_PER_SEC);
+         project_wf_on_new_basis(step, dftb, ct, f_ct_project_wf, f_ct_project_wf_ref );
+         printf("stop project at %f\n", (double) clock()/CLOCKS_PER_SEC);
+       }
        /* evaluate the amount of annihilated charge due to neg. imag. potentials */
        for (i=0; i<ct->neg_imag_pot; i++)
          ct->site_annihilated_occupation[i] += 2 * ct->neg_imag_pot_rate_constant * PS_TO_AU * ct->occupation[ct->site_neg_imag_pot[i]] * ir->delta_t;
@@ -1960,6 +1918,22 @@ if(GIESEPEPTIDE){
 
   if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteNOMOVEMENT || ct->jobtype==cteSURFACEHOPPING || 
         ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==cteNEGFLORENTZ) {
+
+    #ifdef GMX_MPI
+    get_MM_params(ct, dftb, ct_mpi_comm, ct_mpi_rank, ct_mpi_size);
+    MPI_Barrier(ct_mpi_comm);
+    for (i=0; i<ct->sites; i++){
+      MPI_Bcast(ct->site[i].delta_q[0], ct->site[i].homos*ct->site[i].atoms, MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm); //needed to build the hubbard matrix at main node
+      if ( ct->do_lambda_i==2 )
+        MPI_Bcast(dftb->phase1[i].grad[0], 3*dftb->phase1[i].nn,  	       MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);//needed to add forces for explicit lambda_i //try to send rvec -> 3*double. have to  test
+      if (ct->qmmm == 3) 
+        MPI_Bcast(&(dftb->phase1[i].esp), 1,  MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);
+    }
+    MPI_Barrier(ct_mpi_comm);
+    #else
+    get_MM_params(ct, dftb);
+    #endif            
+
     /* map the hole on the atomic charges - first check the charges */
     counter=0;
     for (i=0; i<ct->sites; i++) {

@@ -2866,12 +2866,26 @@ void do_dftb_phase1(charge_transfer_t *ct, dftb_t *dftb, MPI_Comm ct_mpi_comm, i
       run_dftb1(ct, dftb, i);
       if ( ct->jobtype != cteTDA )
         sort_mobasis(dftb, ct, i);
+    }
+
+  printf("do_dftb_phase1 end at rank %d at %f\n", ct_mpi_rank, (double) clock()/CLOCKS_PER_SEC);
+  return;
+}
+void get_MM_params(charge_transfer_t *ct, dftb_t *dftb, MPI_Comm ct_mpi_comm, int ct_mpi_rank, int ct_mpi_size)
+{
+  int i;
+  for (i=0; i<ct->sites; i++)
+    if (i % ct_mpi_size == ct_mpi_rank) {
       get_delta_q(dftb, ct, i);
       if(ct->do_lambda_i==2 || ct->do_lambda_i==3)
         get_internal_forces(dftb, ct, i);
     }
-
-  printf("do_dftb_phase1 end at rank %d at %f\n", ct_mpi_rank, (double) clock()/CLOCKS_PER_SEC);
+  if (ct->do_lambda_i==3){
+    offdiag_gradient_homo(dftb, dftb->phase2.x, dftb->phase2.grad, ct);
+    //for (i=0; i<dftb->phase2.nn; i++)
+    //    printf("offdiag grad at atom i %d  QM force %lf \n", i,  -(real) HARTREE_BOHR2MD * fabs(dftb->phase2.grad[i][0])+fabs(dftb->phase2.grad[i][1])+fabs(dftb->phase2.grad[i][2]));
+    printf("offdiag forces end   at %f\n", (double) clock()/CLOCKS_PER_SEC);
+  }
   return;
 }
 
@@ -2916,15 +2930,28 @@ void do_dftb_phase1(charge_transfer_t *ct, dftb_t *dftb)
     run_dftb1(ct, dftb, i);
     if ( ct->jobtype != cteTDA )
       sort_mobasis(dftb, ct, i);
-    get_delta_q(dftb, ct, i);
-    if(ct->do_lambda_i==2 || ct->do_lambda_i==3)
-      get_internal_forces(dftb, ct, i);
   }
   
    printf("do_dftb_phase1 end   at %f\n", (double) clock()/CLOCKS_PER_SEC);
 
   return;
 }
+void get_MM_params(charge_transfer_t *ct, dftb_t *dftb)
+{
+  for (i=0; i<ct->sites; i++){
+    get_delta_q(dftb, ct, i);
+    if(ct->do_lambda_i==2 || ct->do_lambda_i==3)
+      get_internal_forces(dftb, ct, i);
+  }
+  if (ct->do_lambda_i==3){
+    offdiag_gradient_homo(dftb, dftb->phase2.x, dftb->phase2.grad, ct);
+    //for (i=0; i<dftb->phase2.nn; i++)
+    //    printf("offdiag grad at atom i %d  QM force %lf \n", i,  -(real) HARTREE_BOHR2MD * fabs(dftb->phase2.grad[i][0])+fabs(dftb->phase2.grad[i][1])+fabs(dftb->phase2.grad[i][2]));
+    printf("offdiag forces end   at %f\n", (double) clock()/CLOCKS_PER_SEC);
+  }
+  return;
+}
+
 void do_esp_only(charge_transfer_t *ct, dftb_t *dftb, real *q)
 {
   int i, j;
@@ -2961,12 +2988,6 @@ int i, l;
 
   printf("do_dftb_phase2 end   at %f\n", (double) clock()/CLOCKS_PER_SEC);
  
-  if (ct->do_lambda_i==3){
-    offdiag_gradient_homo(dftb, dftb->phase2.x, dftb->phase2.grad, ct);
-    //for (i=0; i<dftb->phase2.nn; i++)
-    //    printf("offdiag grad at atom i %d  QM force %lf \n", i,  -(real) HARTREE_BOHR2MD * fabs(dftb->phase2.grad[i][0])+fabs(dftb->phase2.grad[i][1])+fabs(dftb->phase2.grad[i][2]));
-    printf("offdiag forces end   at %f\n", (double) clock()/CLOCKS_PER_SEC);
-  }
   return;
 }
 
