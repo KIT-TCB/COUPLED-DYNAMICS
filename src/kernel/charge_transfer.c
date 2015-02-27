@@ -384,7 +384,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   /* scaling of off-diagonal elements? */
   getline(&line2, &len, f);
   if (strstr(line2, "SOD") || strstr(line2, "sod") || strstr(line2, "Sod") ) {
-    ct->offdiag_scaling = 1.540 ;
+    ct->offdiag_scaling = ct->is_hole_transfer ? OFFDIAG_FACTOR_HOLE : OFFDIAG_FACTOR_ELEC; // 1.540 :  1.795
     PRINTF("scaling of off-diagonal elements applied\n");
   }
   else {

@@ -40,3 +40,10 @@ cmake ../COUPLED-DYNAMICS -DGMX_MPI=ON -DGMX_OPENMP=OFF
 # Compiling with MKL still doesn't work with standard cmake configurations. Add to the compiler options CMAKE_C_FLAGS:
 -I/opt/intel/composer_xe_2013_sp1.4.211/mkl/include -mkl
 # ...either by editing CMakeCache.txt by hand or by using "ccmake ." in the build directory.
+
+# Better use ONLY AVX. All cores on IC2 are intels with AVX-support and with alternative optimization the compilation takes much longer.
+#change CMAKE_C_FLAGS...
+-xSSE4.2 -axAVX
+#..to..
+-xAVX
+

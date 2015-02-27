@@ -1423,7 +1423,7 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
            MPI_Barrier(ct_mpi_comm); //wait until broadcasting has finished
 	   if (ct_mpi_rank == 0 && ct->jobtype != cteESP) 
              do_dftb_phase2(ct, dftb);
-           if (ct->jobtype==cteSCCDYNAMIC){
+           if (ct->dim > ct->sites && ct->jobtype==cteSCCDYNAMIC){
              printf("start project at %f\n", (double) clock()/CLOCKS_PER_SEC);
              project_wf_on_new_basis(step, dftb, ct, f_ct_project_wf, f_ct_project_wf_ref );
              printf("stop project at %f\n", (double) clock()/CLOCKS_PER_SEC);
