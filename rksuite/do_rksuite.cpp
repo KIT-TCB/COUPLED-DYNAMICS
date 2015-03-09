@@ -1,5 +1,6 @@
 #include "rksuite.h"
 
+
 #define TFS_DIV_INTERVAL (15000)
 
 #define NEG_IMAG_POT (1.e-3)
@@ -47,6 +48,9 @@ typedef struct {
   int nel;             /* total number of electrons */
   int norb;            /* total number of orbitals */
   double radius;       /* radius of charged sphere in polarizable continuum */
+  int do_scc;          /* each site may or may not be calculated self consistently */
+  double *com;         /* center of mass. needed to decide if site should become active or not */
+  int active;          /* switch 0/1 that determines if site is part of the QM calculation or just inactive member of the pool */
 } ct_site_t;
 
 typedef struct {
@@ -107,7 +111,6 @@ typedef struct {
   ct_site_t *sitetype; /* list of different types of sites */
   int sites;           /* number of sites */
   ct_site_t *site;     /* list of the considered nucleobases */
-  int *do_scc;         /* each site may or may not be calculated self consistently */
   int do_scc_CG;       /* CG Hamiltonian may or may not be calculated self consistently */
   int dim;
   int is_hole_transfer; /* electron or hole transfer */
@@ -192,11 +195,17 @@ typedef struct {
   double **per_diab_hamiltonian;
   int decoherence;     /* shall the decoherence correction be applied? 0==NO, 1==YES */
   ct_negf_lorentz_t *negf_arrays;
-  int *sort_initialization_step; /* is this the first time one has to sort orbitals on site i? */
   align_t align;
   dvec efield;  // external electric field
   int first_step; // is first time QM calculations? may differ from "step==0" from gromacs-steps in case of reruns. general purpose variable can be used by different routines (compared to tfs_initialization_step)
   double *born_overlap; //overlap used in cteBORNOPPENHEIMER
+  // variables for adaptive QM zone
+  int pool_size;         // number of possible sites (active sites are ct->sites)
+  ct_site_t* pool_site;  // possible site (active ones are ct->site[i])
+  dvec coc;              // center of charge (determines which sites become active)
+  dvec coc_start;        // center of charge[bohr] at the beginning of the simulation
+  int opt_QMzone;        // switch 0/1 that derermines if optimal QM zone should be generated from pool of sites 
+  double adapt_inv_tot_mass; // inverse of the total mass of one site
 } charge_transfer_t;
 
 /* calculate the derivative of var and save it in array dvar */

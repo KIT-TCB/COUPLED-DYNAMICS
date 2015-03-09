@@ -53,7 +53,7 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
   counter = 0;
   for (i=0; i<ct->sites; i++) {
     for (j=0; j<ct->site[i].atoms; j++) {
-      dftb2.qmat[counter] = ct->do_scc[i] > 0 ? dftb->phase1[i].qmat[j] : dftb->qzero1[dftb->phase1[i].izp[j]] ; //use only DFTB2 Hamiltonian if the sites were also calculated using DFTB2
+      dftb2.qmat[counter] = ct->site[i].do_scc > 0 ? dftb->phase1[i].qmat[j] : dftb->qzero1[dftb->phase1[i].izp[j]] ; //use only DFTB2 Hamiltonian if the sites were also calculated using DFTB2
       //dftb2.qmat[counter] = dftb->phase1[i].qmat[j];
       counter++;
     }
@@ -134,6 +134,7 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
   }
 // */
 
+  printf("phase2 before pme %f\n", (double) clock()/CLOCKS_PER_SEC);
   /* call QM/MM if desired */
   if (ct->qmmm == 3)
     do_pme_for_dftb_phase2(ct, dftb);
@@ -152,8 +153,10 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
     }
   }
 
+  printf("phase2 before gamma %f\n", (double) clock()/CLOCKS_PER_SEC);
   // add charge-dependent terms (Hubbard and consec. extcharges)
   gammamatrix(nn, x, dftb2.gammamat, dftb->uhubb2, dftb2.izp);
+  printf("phase2 after gamma%f\n", (double) clock()/CLOCKS_PER_SEC);
   /*
   printf("gamma matrix: nn= %d\n",nn);
   for (i=0; i<10; i++) {

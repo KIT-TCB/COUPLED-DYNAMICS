@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <float.h>
+#include "typedefs.h"
 
 #define MAX_INTEGRATION_STEP (84.) /* 2 fs in atomic units */
 

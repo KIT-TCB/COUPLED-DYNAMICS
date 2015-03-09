@@ -116,7 +116,7 @@ int run_dftb1(charge_transfer_t *ct, dftb_t *dftb, int ibase) // i - nucleobase 
 */
 
   // set the initial charges
-  if(ct->do_scc[ibase] < 2)  //with this option qmat(t) would be qmat(t - delta_t), otherwise it should be qzero before scc
+  if(ct->site[ibase].do_scc < 2)  //with this option qmat(t) would be qmat(t - delta_t), otherwise it should be qzero before scc
   for (i=0; i<nn; i++)
     dftb1.qmat[i] = dftb->qzero1[dftb1.izp[i]];
   
@@ -315,7 +315,7 @@ int run_dftb1(charge_transfer_t *ct, dftb_t *dftb, int ibase) // i - nucleobase 
     // printf("iter: %d, E= %14.9f\n", niter, eel);
 
     // check convergence
-    if (ct->do_scc[ibase] == 0){ break;}
+    if (ct->site[ibase].do_scc == 0){ break;}
     if (fabs(eel-eelold) < scftol) {
       printf("site %d converged after %d iterations. \n", ibase, niter);
       break;

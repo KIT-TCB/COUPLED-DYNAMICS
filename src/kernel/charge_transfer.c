@@ -192,8 +192,9 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   size_t len;
   int i, j, k, l, m, n, counter, *counter_array, counter_cplx, QMLAcounter, MMLAcounter, QMCAcounter, QMCApool[QMCASIZE], QMCApoolcounter, environment, environment_cplx, modif_cplx, counter_modif_cplx=0,
       mm_list_size, *mm_list;
-  double  sum,bond_length, bond_length_best, X[3], Y[3], magnitude;
+  double  sum,bond_length, bond_length_best, X[3], Y[3], magnitude, mass;
   dvec bond;
+  ct_site_t *site;
   ct->first_step=1;
 #ifdef GMX_MPI
   printf("Initializing charge transfer at rank %d\n", ct_mpi_rank);
@@ -512,7 +513,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   PRINTF("There are %d different type(s) of sites\n", ct->sitetypes);
   snew(ct->sitetype, ct->sitetypes);
  
-  /* site specification *///////////////////////////////////////////
+  /////* read in site specification */////
   for(i = 0; i < ct->sitetypes; i++) {
     fscanf(f, "%s\n", sitespecdat);
     f2 = fopen(sitespecdat, "r");
@@ -559,21 +560,11 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     for(j=0; j<ct->sitetype[i].connections; j++)
       snew(ct->sitetype[i].QMCN[j], 2);
     fscanf(f2, "%d\n", &(ct->sitetype[i].homos));
-    //snew(ct->sitetype[i].delta_q, ct->sitetype[i].homos);
-    //for(j = 0; j < ct->sitetype[i].homos; j++)
-    //  snew(ct->sitetype[i].delta_q[j], ct->sitetype[i].atoms);
     snew(ct->sitetype[i].homo, ct->sitetype[i].homos);
     snew(ct->sitetype[i].hubbard, ct->sitetype[i].homos);
     snew(ct->sitetype[i].lambda_i, ct->sitetype[i].homos);
-    for(j = 0; j < ct->sitetype[i].homos; j++) {
-      //if(ct->do_lambda_i == 1)
-        fscanf(f2, "%d%lf%lf\n", &(ct->sitetype[i].homo[j]), &(ct->sitetype[i].hubbard[j]), &(ct->sitetype[i].lambda_i[j]));
-     // else
-     //   fscanf(f2, "%d%lf\n", &(ct->sitetype[i].homo[j]), &(ct->sitetype[i].hubbard[j]));
-     // for(k = 0; k < ct->sitetype[i].atoms; k++){
-     //   fscanf(f2, "%lf\n", &(ct->sitetype[i].delta_q[j][k])); delta_q are calculated as mulliken charge differences 
-     // }
-    }
+    for(j = 0; j < ct->sitetype[i].homos; j++)
+      fscanf(f2, "%d%lf%lf\n", &(ct->sitetype[i].homo[j]), &(ct->sitetype[i].hubbard[j]), &(ct->sitetype[i].lambda_i[j]));
     getline(&line2, &len, f2);
     if (strstr(line2, "END")){
       PRINTF("Finished reading file %s \n", sitespecdat);
@@ -584,84 +575,144 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     fclose(f2);
   }
 
-  /* construct sites according to sitetypes *///////////////////////////////////
+
+  /////* construct pool of sites according to sitetypes */////
+
   /* pointers to constant values point to the same address. site specific values are allocated after copying sitetype to site */
+  /* active sites are selected from this pool */
   fscanf(f, "%d", &(ct->sites));
-  PRINTF("QM system consists of %d sites:\n", ct->sites);
-  PRINTF("Site   Residue   MO   DO_SCC?\n");
+  fscanf(f, "%d", &(ct->pool_size));
+  if(ct->sitetypes>1 && (ct->pool_size != ct->sites)){
+    printf("Adaptive QM zone works only if every site is the same.\n");
+    exit(-1);
+  }
+  if (ct->sites == ct->pool_size){
+    PRINTF("QM system consists of %d sites:\n", ct->sites);
+  }else{
+    PRINTF("%d out of a pool of %d sites will constitute the QM system\n Starting with: ", ct->sites, ct->pool_size);
+  }
   snew(ct->site, ct->sites);
-  snew(ct->do_scc, ct->sites);
   snew(ct->indFO, ct->sites);
-  for(i = 0; i < ct->sites; i++){
-    fscanf(f, "%d %d %d\n", &(ct->site[i].resnr), &(ct->site[i].type), &(ct->do_scc[i])); 
-    if(ct->do_lambda_i > 0 && ct->do_scc[i]!=0){
+  snew(ct->pool_site,ct->pool_size);
+  for(i = 0; i < ct->pool_size; i++){
+    fscanf(f, "%d %d %d\n", &(ct->pool_site[i].resnr), &(ct->pool_site[i].type), &(ct->pool_site[i].do_scc)); 
+    if(ct->do_lambda_i > 0 && ct->pool_site[i].do_scc!=0){
       PRINTF("QM-forces were designed for DFTB1 formulism but you want to use DFTB2");
       exit(-1);
     }
-    ct->site[i].type--; //for convinient numbering in charge-transfer.dat from 1 to #_diffrent_sites
-//    ct->site[i].resnr--; //apparently residues are numbered in gromacs starting from 0 but written out as starting from 1  CHANGED IN GROMACS4.6
+    ct->pool_site[i].type--; //for convinient numbering in charge-transfer.dat from 1 to #_diffrent_sites
+//    ct->pool_site[i].resnr--; //apparently residues are numbered in gromacs starting from 0 but written out as starting from 1  CHANGED IN GROMACS4.6
+  }
+  for(i = 0; i < ct->pool_size; i++) {
+    snew(ct->pool_site[i].nochrs , ct->sitetype[ct->pool_site[i].type].bonds);
+    snew(ct->pool_site[i].addchrs , ct->sitetype[ct->pool_site[i].type].bonds);
+    snew(ct->pool_site[i].nochr , ct->sitetype[ct->pool_site[i].type].bonds);
+    snew(ct->pool_site[i].addchr , ct->sitetype[ct->pool_site[i].type].bonds);
+    for(j = 0; j < ct->sitetype[ct->pool_site[i].type].bonds ; j++){
+      snew(ct->pool_site[i].addchr[j], ct->sitetype[ct->pool_site[i].type].addchrs[j]);
+      snew(ct->pool_site[i].nochr[j], ct->sitetype[ct->pool_site[i].type].nochrs[j]);
     }
+    snew(ct->pool_site[i].homo, ct->sitetype[ct->pool_site[i].type].homos);
+    snew(ct->pool_site[i].lambda_i, ct->sitetype[ct->pool_site[i].type].homos);
+     
+    l = ct->pool_site[i].resnr; // resnr is parked in l. otherwise the resnr would get lost by copying sitetype to site.
+    ct->pool_site[i]= ct->sitetype[ct->pool_site[i].type]; //not sure if copying is that easy  
+    ct->pool_site[i].resnr = l;
+    
+    /* stuff that is unique for each site */
+    snew(ct->pool_site[i].delta_q, ct->sitetype[ct->pool_site[i].type].homos);  
+      snew(ct->pool_site[i].delta_q[0], ct->sitetype[ct->pool_site[i].type].homos* ct->sitetype[ct->pool_site[i].type].atoms);
+    for(j = 1; j < ct->pool_site[i].homos; j++)
+      ct->pool_site[i].delta_q[j]=ct->pool_site[i].delta_q[0]+j*ct->pool_site[i].atoms;
+    snew(ct->pool_site[i].overlap, ct->pool_site[i].homos);
+      snew(ct->pool_site[i].overlap[0], SQR(ct->pool_site[i].homos));
+      for(j = 0; j < ct->pool_site[i].homos; j++)
+        ct->pool_site[i].overlap[j] = ct->pool_site[i].overlap[0] + j * ct->pool_site[i].homos;
+    snew(ct->pool_site[i].overlap_ref, ct->pool_site[i].homos);
+      snew(ct->pool_site[i].overlap_ref[0], SQR(ct->pool_site[i].homos));
+      for(j = 0; j < ct->pool_site[i].homos; j++)
+        ct->pool_site[i].overlap_ref[j] = ct->pool_site[i].overlap_ref[0] + j * ct->pool_site[i].homos;
+
+    snew(ct->pool_site[i].atom , ct->sitetype[ct->pool_site[i].type].atoms);
+    snew(ct->pool_site[i].atomtype , ct->sitetype[ct->pool_site[i].type].atoms);
+    snew(ct->pool_site[i].QMLA , ct->sitetype[ct->pool_site[i].type].bonds);
+    snew(ct->pool_site[i].MMLA , ct->sitetype[ct->pool_site[i].type].bonds);
+    snew(ct->pool_site[i].modif_extcharge , ct->sitetype[ct->pool_site[i].type].bonds);
+    for(j = 0; j < ct->sitetype[ct->pool_site[i].type].bonds ; j++){
+      snew(ct->pool_site[i].modif_extcharge[j], ct->sitetype[ct->pool_site[i].type].addchrs[j]);
+      for (k=0; k <  ct->sitetype[ct->pool_site[i].type].addchrs[j]; k++) 
+        ct->pool_site[i].modif_extcharge[j][k]=-1; // -1 equals undetermined
+    }
+    snew(ct->pool_site[i].QMCA , ct->sitetype[ct->pool_site[i].type].connections);
+    snew(ct->pool_site[i].QMCN , ct->sitetype[ct->pool_site[i].type].connections);
+    for(j=0; j<ct->sitetype[ct->pool_site[i].type].connections; j++)
+      snew(ct->pool_site[i].QMCN[j], 2);
+    snew(ct->pool_site[i].com, 3);
+//PRINTF("DATA %d %d %d %s %lf %d %d %d %lf %lf \n", ct->pool_site[i].atoms, ct->pool_site[i].bonds,ct->pool_site[i].nochrs[0],ct->pool_site[i].nochr[0][0],ct->pool_site[i].extracharge[0],ct->pool_site[i].addchrs[0],ct->pool_site[i].homos,ct->pool_site[i].homo[0],ct->pool_site[i].hubbard[0],ct->pool_site[i].lambda_i[0]);
+  }
+
+  /* get the number of extcharges */
+  switch (ct->qmmm) {
+    case 1:
+    case 3:
+      ct->extcharges_cplx = top_global->natoms;
+      break;
+    case 2:
+      ct->extcharges_cplx = mm_list_size;
+      break;
+    default:
+      ct->extcharges_cplx = 0;
+  }
+  for (i = 0 ; i < ct->pool_size; i++) {
+    site=&(ct->pool_site[i]);
+    switch (ct->qmmm) {
+      case 1:
+      case 3:
+        site->extcharges = top_global->natoms - site->atoms;
+        for (j = 0; j <site->bonds ; j++)
+          site->extcharges -= site->nochrs[j];
+        
+        if (i<ct->sites){//complex has only ct->sites sites
+          ct->extcharges_cplx -= site->atoms;
+          for (j = 0; j <site->bonds ; j++)
+            ct->extcharges_cplx -= site->nochrs[j];
+        }
+        break;
+      case 2:
+        /* NUMBER OF EXTCHARGES HERE! */
+        printf("check if adaptive QM zone works with extcharge list\n"); exit(-1);
+        site->extcharges = mm_list_size;
+        /* DO NOT SUBTRACT ANYTHING HERE, YET! */
+        break;
+      default:
+        site->extcharges = 0;
+    }
+  }
+  if (ct->qmmm > 0) {
+    snew(ct->extcharge_cplx, top_global->natoms);
+    for (i=0; i<ct->pool_size; i++)
+      snew(ct->pool_site[i].extcharge, top_global->natoms);// we allocate array a little bit larger than needed (natoms instead of extcharges) and let remaining enrtries blank. This way we can build the intersection of these arrays in order to find the extcharges of the complex
+  }
+ 
+  /* set the first ct->sites of the pool active */
+  for(i=0; i<ct->pool_size; i++)
+    ct->pool_site[i].active = i<ct->sites ? 1:0 ;
+  for(i=0; i<ct->sites; i++)
+    ct->site[i]=ct->pool_site[i];
+
+  /* set arrays regarding the complex */
   ct->dim=0;
   ct->atoms_cplx=0;
   counter = 0;  
+  PRINTF("Site   Residue   MO   DO_SCC?\n");
   for(i = 0; i < ct->sites; i++) {
-    snew(ct->site[i].nochrs , ct->sitetype[ct->site[i].type].bonds);
-    snew(ct->site[i].addchrs , ct->sitetype[ct->site[i].type].bonds);
-    snew(ct->site[i].nochr , ct->sitetype[ct->site[i].type].bonds);
-    snew(ct->site[i].addchr , ct->sitetype[ct->site[i].type].bonds);
-    //snew(ct->site[i].delta_q, ct->sitetype[ct->site[i].type].homos);  this way all sites point to same adress, but now every site has own delta_q, has to be done after copying
-    //  snew(ct->site[i].delta_q[0], ct->sitetype[ct->site[i].type].homos* ct->sitetype[ct->site[i].type].atoms);
-    //for(j = 1; j < ct->sitetype[ct->site[i].type].homos; j++)
-    //  ct->site[i].delta_q[j]=ct->site[i].delta_q[0]+j*ct->sitetype[ct->site[i].type].atoms;
-    for(j = 0; j < ct->sitetype[ct->site[i].type].bonds ; j++){
-      snew(ct->site[i].addchr[j], ct->sitetype[ct->site[i].type].addchrs[j]);
-      snew(ct->site[i].nochr[j], ct->sitetype[ct->site[i].type].nochrs[j]);
-//PRINTF("modif_extch %p, modif_extcharges %p\n", ct->site[i].modif_extcharge, ct->site[i].modif_extcharge[j]);
-    }
-    snew(ct->site[i].homo, ct->sitetype[ct->site[i].type].homos);
-    snew(ct->site[i].lambda_i, ct->sitetype[ct->site[i].type].homos);
-     
-    l = ct->site[i].resnr; // resnr is parked in l. otherwise the resnr would get lost by copying sitetype to site.
-    ct->site[i]= ct->sitetype[ct->site[i].type]; //not sure if copying is that easy  
-    ct->site[i].resnr = l;
-    
-    //stuff that is unique for each site
-    snew(ct->site[i].delta_q, ct->sitetype[ct->site[i].type].homos);  
-      snew(ct->site[i].delta_q[0], ct->sitetype[ct->site[i].type].homos* ct->sitetype[ct->site[i].type].atoms);
-    for(j = 1; j < ct->site[i].homos; j++)
-      ct->site[i].delta_q[j]=ct->site[i].delta_q[0]+j*ct->site[i].atoms;
-    snew(ct->site[i].overlap, ct->site[i].homos);
-      snew(ct->site[i].overlap[0], SQR(ct->site[i].homos));
-      for(j = 0; j < ct->site[i].homos; j++)
-        ct->site[i].overlap[j] = ct->site[i].overlap[0] + j * ct->site[i].homos;
-    snew(ct->site[i].overlap_ref, ct->site[i].homos);
-      snew(ct->site[i].overlap_ref[0], SQR(ct->site[i].homos));
-      for(j = 0; j < ct->site[i].homos; j++)
-        ct->site[i].overlap_ref[j] = ct->site[i].overlap_ref[0] + j * ct->site[i].homos;
-
-    snew(ct->site[i].atom , ct->sitetype[ct->site[i].type].atoms);
-    snew(ct->site[i].atomtype , ct->sitetype[ct->site[i].type].atoms);
-    snew(ct->site[i].QMLA , ct->sitetype[ct->site[i].type].bonds);
-    snew(ct->site[i].MMLA , ct->sitetype[ct->site[i].type].bonds);
-    snew(ct->site[i].modif_extcharge , ct->sitetype[ct->site[i].type].bonds);
-    for(j = 0; j < ct->sitetype[ct->site[i].type].bonds ; j++){
-      snew(ct->site[i].modif_extcharge[j], ct->sitetype[ct->site[i].type].addchrs[j]);
-      for (k=0; k <  ct->sitetype[ct->site[i].type].addchrs[j]; k++) 
-        ct->site[i].modif_extcharge[j][k]=-1; // -1 equals undetermined
-    }
-    snew(ct->site[i].QMCA , ct->sitetype[ct->site[i].type].connections);
-    snew(ct->site[i].QMCN , ct->sitetype[ct->site[i].type].connections);
-    for(j=0; j<ct->sitetype[ct->site[i].type].connections; j++)
-      snew(ct->site[i].QMCN[j], 2);
-//PRINTF("%d %d %d %s %lf %d %d %d %lf %lf \n", ct->site[i].atoms, ct->site[i].bonds,ct->site[i].nochrs[0],ct->site[i].nochr[0][0],ct->site[i].extracharge[0],ct->site[i].addchrs[0],ct->site[i].homos,ct->site[i].homo[0],ct->site[i].hubbard[0],ct->site[i].lambda_i[0]);
-
     ct->indFO[i] = ct->dim;
     ct->dim += ct->site[i].homos;
     ct->atoms_cplx += ct->site[i].atoms;
     for (k = 0; k < ct->site[i].bonds; k++)
       counter += ct->site[i].addchrs[k];
     for (k = 0; k < ct->site[i].homos; k++)
-      PRINTF("  %d       %d      %d    %s\n", i+1, ct->site[i].resnr, ct->site[i].homo[k],  (ct->do_scc[i]==0) ? "NO" : "YES" );
+      PRINTF("  %d       %d      %d    %s\n", i+1, ct->site[i].resnr, ct->site[i].homo[k],  (ct->site[i].do_scc==0) ? "NO" : "YES" );
   }
   snew(ct->atom_cplx, ct->atoms_cplx);
   snew(ct->atomtype_cplx, ct->atoms_cplx);
@@ -669,14 +720,6 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   snew(ct->modif_extcharge_cplx, ct->modif_extcharges_cplx);
   for (i = 0; i < ct->modif_extcharges_cplx; i++)
     ct->modif_extcharge_cplx[i] = -1; // -1 equals undetermined
-  
-  
-
-  //ct->hamiltonian = (double **) malloc(ct->sites * sizeof(double *));
-  //  ct->hamiltonian[0] = (double *) malloc(SQR(ct->sites) * sizeof(double));
-  snew(ct->sort_initialization_step, ct->sites);
-    for(i=0; i< ct->sites; i++)
-      ct->sort_initialization_step[i]=1; 
   snew(ct->hamiltonian, ct->dim);
     snew(ct->hamiltonian[0], SQR(ct->dim));
     for(j = 1; j < ct->dim; j++)
@@ -690,6 +733,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
         snew(ct->hamiltonian_history[i][j], ct->n_avg_ham);
       }
     }
+
   snew(ct->hamiltonian_mod, ct->dim);
   snew(ct->hamiltonian_adiab, SQR(ct->dim));
   snew(ct->ev_adiab, ct->dim);
@@ -699,13 +743,12 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   snew(ct->ev_spec, ct->dim);
   snew(ct->evec_spec, SQR(ct->dim));
   snew(ct->work_spec, 3*ct->dim);
-  //ct->hubbard = (double **) malloc(ct->sites * sizeof(double *));
-  //  ct->hubbard[0] = (double *) malloc(SQR(ct->sites) * sizeof(double));
   snew(ct->hubbard, ct->dim);
     snew(ct->hubbard[0], SQR(ct->dim));
     for(j = 1; j < ct->dim; j++)
       ct->hubbard[j] = ct->hubbard[0] + j * ct->dim;
 
+  /* set constant hubbard elements */
   counter=0;
   for(i = 0; i < ct->sites; i++){
     for(j = 0; j < ct->site[i].homos; j++){
@@ -732,50 +775,31 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   snew(ct->rk_thres, ct->rk_neq);
   for (i=0; i<ct->rk_neq; i++){
     ct->rk_thres[i] = ct->rk_tol;
-//printf("thres %15.10lf \n", ct->rk_thres[i]);
   }
   ct->rk_lenwrk = 32 * ct->rk_neq;
   snew(ct->rk_work, ct->rk_lenwrk);
 
-  /* NEGF data */
-  if (ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC) {
-    snew(ct->negf_arrays, 1);
-    ct->negf_arrays->n[0] = ct->sites;
-    fscanf(f, "%ld\n", ct->negf_arrays->n_lorentz);
-    fscanf(f, "%lf %lf\n", ct->negf_arrays->e_f_left, ct->negf_arrays->e_f_right);
-    fscanf(f, "%lf %ld %ld\n", ct->negf_arrays->temp, ct->negf_arrays->n_poles_l, ct->negf_arrays->n_poles_r);
-    fscanf(f, "%lf %lf %lf\n", ct->negf_arrays->gam_l, ct->negf_arrays->eps_l, ct->negf_arrays->w0_l);
-    fscanf(f, "%lf %lf %lf\n", ct->negf_arrays->gam_r, ct->negf_arrays->eps_r, ct->negf_arrays->w0_r);
-    PRINTF("Parameters read for the non-eq. Green's functions:\n");
-    PRINTF("  n = %ld, n_lorentz = %ld\n", ct->negf_arrays->n[0], ct->negf_arrays->n_lorentz[0]);
-    PRINTF("  e_f_left = %lf, e_f_right = %lf\n", ct->negf_arrays->e_f_left[0], ct->negf_arrays->e_f_right[0]);
-    PRINTF("  temp = %lf, n_poles_l = %ld, n_poles_r = %ld\n", ct->negf_arrays->temp[0], ct->negf_arrays->n_poles_l[0], ct->negf_arrays->n_poles_r[0]);
-    PRINTF("  gam_l = %lf, eps_l = %lf, w0_l = %lf\n", ct->negf_arrays->gam_l[0], ct->negf_arrays->eps_l[0], ct->negf_arrays->w0_l[0]);
-    PRINTF("  gam_r = %lf, eps_r = %lf, w0_r = %lf\n", ct->negf_arrays->gam_r[0], ct->negf_arrays->eps_r[0], ct->negf_arrays->w0_r[0]);
-  }
 
-
-  /* read occupations if we have NOMOVEMENT */
-  /* RATHER, READ IN THE WAVE FUNCTION ALWAYS! except ctePARAMETERS... */
+  /* read in the wavefunction */
   if (ct->jobtype != ctePARAMETERS && ct->jobtype != cteESP && ct->jobtype != cteTDA) {
-    ct->survival = 0.0;
-    for (i=0; i<ct->dim; i++) {
-      fscanf(f, "%lf%lf\n", ct->wf + i, ct->wf + ct->dim + i);
-      ct->occupation[i] = SQR(ct->wf[i]) + SQR(ct->wf[ct->dim + i]);
-      ct->survival += ct->occupation[i];
+    if(ct->pool_size > ct->sites)
+      getline(&line2, &len, f);
+    if(strstr(line2, "OPT") || strstr(line2, "opt")){
+      ct->opt_QMzone=1;
+      PRINTF("Will search pool for best site to start.\n");
+    }else{
+      ct->opt_QMzone=0;
+      ct->survival = 0.0;
+      for (i=0; i<ct->dim; i++) {
+        fscanf(f, "%lf%lf\n", ct->wf + i, ct->wf + ct->dim + i);
+        ct->occupation[i] = SQR(ct->wf[i]) + SQR(ct->wf[ct->dim + i]);
+        ct->survival += ct->occupation[i];
+      }
+      PRINTF("Read the wavefunction:\n");
+      for (i=0; i<ct->dim; i++)
+        PRINTF(" Re_wf[%d] = %7.4f, Im_wf[%d] = %7.4f\n", i+1, ct->wf[i], i+1, ct->wf[i + ct->dim]);
+      PRINTF("Sum of occupations = %7.5f\n", ct->survival);
     }
-    PRINTF("Read the wavefunction:\n");
-    for (i=0; i<ct->dim; i++)
-      PRINTF(" Re_wf[%d] = %7.4f, Im_wf[%d] = %7.4f\n", i+1, ct->wf[i], i+1, ct->wf[i + ct->dim]);
-    PRINTF("Sum of occupations = %7.5f\n", ct->survival);
-  }
-  /* NEGF initialization including initial density matrix */
-  if (ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC) {
-    PRINTF("Initializing the NEGF calculation\n");
-#ifdef GMX_MPI
-    if (ct_mpi_rank == 0)
-#endif
-    negf_init_arrays(ct->negf_arrays, &(ct->rk_timestep), ct->wf);
   }
 
   if (ct->jobtype == cteSCCDYNAMIC || ct->jobtype == cteNONSCCDYNAMIC || ct->jobtype == cteSURFACEHOPPING) {
@@ -809,9 +833,13 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     PRINTF("Didn't find expected 'END' keyword in file charge-transfer.dat \n");
     exit(-1);
   }
-  fclose(f);
+  fclose(f); 
+  /* all read in and allocated. */
 
-  // build pool of all QM connection atoms
+
+
+
+  /* build pool of all QM connection atoms */
   QMCApoolcounter = 0;
   for (j = 0; j < atoms->nr; j++) 
     if (!strncmp((*(atoms->atomname[j])), "CQMC", 4) ||     
@@ -826,38 +854,33 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   PRINTF("Total number of connection atoms in the system: %d \n", QMCApoolcounter);
 
 
-
-  /* Assign the atom numbers that the sites are composed of */
-  //manual set up DIRTY
-if(!GIESEPEPTIDE){
-
-  counter_cplx = 0;
-  for (i = 0; i < ct->sites; i++) {
+  /////* Assign the atom numbers and types that the sites are composed of */////
+  for (i = 0; i < ct->pool_size; i++) {
+    site=&(ct->pool_site[i]);
     counter = 0;
     QMLAcounter = 0;      
     MMLAcounter = 0;
     QMCAcounter = 0;
-    PRINTF("Site %d (Residue %d): \n", i+1, ct->site[i].resnr);
+    //PRINTF("Site %d (Residue %d): \n", i+1, site->resnr);
     for (j = 0; j < atoms->nr; j++) {
-      if (atoms->resinfo[atoms->atom[j].resind].nr == ct->site[i].resnr) { /* atom j is in residue that site i corresponds to */
+      if (atoms->resinfo[atoms->atom[j].resind].nr == site->resnr) { /* atom j is in residue that site i corresponds to */
+
+        /* find QM link atoms */
         if (!strncmp((*(atoms->atomname[j])), "CQML", 4) ||     /* QM link atom may be a C, N or O atom. (in most cases only C atoms are recommended) */
 	    !strncmp((*(atoms->atomname[j])), "NQML", 4) ||
             !strncmp((*(atoms->atomname[j])), "OQML", 4) ||
             !strncmp((*(atoms->atomname[j])), "SQML", 4)){
-          ct->site[i].QMLA[QMLAcounter] = counter;
-          ct->site[i].atom[counter] = j;
-	  ct->atom_cplx[counter_cplx] = j;
+          site->QMLA[QMLAcounter] = counter;
+          site->atom[counter] = j;
           switch ((*(atoms->atomname[j]))[0]) {
-            case 'C' : ct->site[i].atomtype[counter] = 0; break;
-            case 'N' : ct->site[i].atomtype[counter] = 2; break;
-            case 'O' : ct->site[i].atomtype[counter] = 3; break;
-            case 'S' : ct->site[i].atomtype[counter] = 4; break;
+            case 'C' : site->atomtype[counter] = 0; break;
+            case 'N' : site->atomtype[counter] = 2; break;
+            case 'O' : site->atomtype[counter] = 3; break;
+            case 'S' : site->atomtype[counter] = 4; break;
             default : PRINTF("Unknown atom type for atom %d (%s), exiting!\n", j, (*(atoms->atomname[j]))); exit(-1);
           }
-	  ct->atomtype_cplx[counter_cplx] = ct->site[i].atomtype[counter];
-          PRINTF("%5d (%5s, type %d)\n", ct->site[i].atom[counter], (*(atoms->atomname[ct->site[i].atom[counter]])), ct->site[i].atomtype[counter]+1);
+          //PRINTF("%5d (%5s, type %d)\n", site->atom[counter], (*(atoms->atomname[site->atom[counter]])), site->atomtype[counter]+1);
           counter++;
-          counter_cplx++;
           QMLAcounter++;
         }
         else if (!strncmp((*(atoms->atomname[j])), "CQMC", 4) ||     
@@ -866,51 +889,44 @@ if(!GIESEPEPTIDE){
                  !strncmp((*(atoms->atomname[j])), "SQMC", 4) ||
                  !strncmp((*(atoms->atomname[j])), "CQMT", 4) ||
                  !strncmp((*(atoms->atomname[j])), "NQMT", 4) ) {
-          ct->site[i].QMCA[QMCAcounter] = counter;
-          ct->site[i].atom[counter] = j;
-          ct->atom_cplx[counter_cplx] = j;
+          ct->pool_site[i].QMCA[QMCAcounter] = counter;
+          ct->pool_site[i].atom[counter] = j;
           switch ((*(atoms->atomname[j]))[0]) {
-            case 'C' : ct->site[i].atomtype[counter] = 0; break;
-            case 'N' : ct->site[i].atomtype[counter] = 2; break;
-            case 'O' : ct->site[i].atomtype[counter] = 3; break;
-            case 'S' : ct->site[i].atomtype[counter] = 4; break;
+            case 'C' : site->atomtype[counter] = 0; break;
+            case 'N' : site->atomtype[counter] = 2; break;
+            case 'O' : site->atomtype[counter] = 3; break;
+            case 'S' : site->atomtype[counter] = 4; break;
             default : PRINTF("Unknown atom type for atom %d (%s), exiting!\n", j, (*(atoms->atomname[j]))); exit(-1);
           }
-	  ct->atomtype_cplx[counter_cplx] = ct->site[i].atomtype[counter];
-          printf("%5d (%5s, type %d)\n", ct->site[i].atom[counter], (*(atoms->atomname[ct->site[i].atom[counter]])), ct->site[i].atomtype[counter]+1);
-          //PRINTF("%5d (%5s, type %d)\n", ct->site[i].atom[counter], (*(atoms->atomname[ct->site[i].atom[counter]])), ct->site[i].atomtype[counter]+1);
+          //PRINTF("%5d (%5s, type %d)\n", site->atom[counter], (*(atoms->atomname[site->atom[counter]])), site->atomtype[counter]+1);
           counter++;
           ///// find capping for connection atoms /////
           bond_length_best=0.5; // = 0.5nm
           m=-1;
           n=-1;
           for (k = 0; k < QMCApoolcounter; k++){
-          for (l=0; l < 3; l++){
-            X[l]=state->x[j][l];
-            Y[l]=state->x[QMCApool[k]][l];
-          }
-          dvec_sub(X,Y, bond);
-          bond_length = dnorm(bond);
-          if (atoms->resinfo[atoms->atom[QMCApool[k]].resind].nr != ct->site[i].resnr && bond_length < bond_length_best){ //find best capping in neighboring residue
-            m=QMCApool[k]; //atomnumber of best QMCA (k) for QMCA (j) is saved in m
-            bond_length_best=bond_length; 
-          }
+            for (l=0; l < 3; l++){
+              X[l]=state->x[j][l];
+              Y[l]=state->x[QMCApool[k]][l];
+            }
+            dvec_sub(X,Y, bond);
+            bond_length = dnorm(bond);
+            if (atoms->resinfo[atoms->atom[QMCApool[k]].resind].nr != site->resnr && bond_length < bond_length_best){ //find best capping in neighboring residue
+              m=QMCApool[k]; //atomnumber of best QMCA (k) for QMCA (j) is saved in m
+              bond_length_best=bond_length; 
+            }
           }
           if(m<0){
             printf("error: no connection atom for QMCA no. %d found in a radius of 5 Angstrom \n",j);
             exit(-1);
           }else{printf("nearest connection atom %d <- %d\n", j, m);} 
           //cap with best QMCA
-          ct->site[i].QMCN[QMCAcounter][0]=m;
-printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, ct->site[i].connections);
-          ct->site[i].QMCN[QMCAcounter][1]=m; // if connection atom is no branching point both neighbors are the same
-         
-          ct->site[i].atom[counter] = m;
-          ct->atom_cplx[counter_cplx] = m;
-          ct->atomtype_cplx[counter_cplx] = ct->site[i].atomtype[counter] = 5; // 5 is pseudo-atom
-
+          site->QMCN[QMCAcounter][0]=m;
+printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, site->connections);
+          site->QMCN[QMCAcounter][1]=m; // if connection atom is no branching point both neighbors are the same
+          site->atom[counter] = m;
+          site->atomtype[counter] = 6; // 6 is pseudo-atom
           counter++;
-          counter_cplx++;
           QMCAcounter++;
           if (!strncmp((*(atoms->atomname[j])), "CQMT", 4)||
 	      !strncmp((*(atoms->atomname[j])), "NQMT", 4)){ /* search also second nearest neighbor */
@@ -924,7 +940,7 @@ printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, ct->site[i].connections);
             }
             dvec_sub(X,Y, bond);
             bond_length = dnorm(bond);
-            if (atoms->resinfo[atoms->atom[QMCApool[k]].resind].nr != ct->site[i].resnr && bond_length < bond_length_best){ //find best capping in neighboring residue
+            if (atoms->resinfo[atoms->atom[QMCApool[k]].resind].nr != site->resnr && bond_length < bond_length_best){ //find best capping in neighboring residue
               n=QMCApool[k]; //atomnumber of best QMCA (k) for QMCA (j) is saved in n
               bond_length_best=bond_length;
             }
@@ -935,15 +951,15 @@ printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, ct->site[i].connections);
               exit(-1);
             }else{printf("nearest connection atom %d <- %d\n", j, n);} 
 
-            ct->site[i].QMCN[QMCAcounter][1]=n;
-            ct->site[i].atom[counter] = n;
-            ct->atom_cplx[counter_cplx] = n;
-            ct->atomtype_cplx[counter_cplx] = ct->site[i].atomtype[counter] = 5; // 5 is pseudo-atom
+            site->QMCN[QMCAcounter][1]=n;
+            site->atom[counter] = n;
+            site->atomtype[counter] = 6; // 6 is pseudo-atom
             counter++;
-            counter_cplx++;
             QMCAcounter++;
           }
         }
+  
+        /* find QM atoms */
         else if (!strncmp((*(atoms->atomname[j])), "CQM", 3) ||     
                  !strncmp((*(atoms->atomname[j])), "HQM", 3) ||
                  !strncmp((*(atoms->atomname[j])), "NQM", 3) ||
@@ -951,59 +967,68 @@ printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, ct->site[i].connections);
                  !strncmp((*(atoms->atomname[j])), "SQM", 3) ||
                  //!strncmp((*(atoms->atomname[j])), "YQM", 3) || // Y was special pseudo atom
                  !strncmp((*(atoms->atomname[j])), "FQM", 3) ) {
-          ct->site[i].atom[counter] = j;
-          ct->atom_cplx[counter_cplx] = j;
+          site->atom[counter] = j;
           switch ((*(atoms->atomname[j]))[0]) {
-            case 'C' : ct->site[i].atomtype[counter] = 0; break;
-            case 'H' : ct->site[i].atomtype[counter] = 1; break;
-            case 'N' : ct->site[i].atomtype[counter] = 2; break;
-            case 'O' : ct->site[i].atomtype[counter] = 3; break;
-            case 'S' : ct->site[i].atomtype[counter] = 4; break;
-            //case 'Y' : ct->site[i].atomtype[counter] = 5; break;
-            case 'F' : ct->site[i].atomtype[counter] = 5; break;
+            case 'C' : site->atomtype[counter] = 0; break;
+            case 'H' : site->atomtype[counter] = 1; break;
+            case 'N' : site->atomtype[counter] = 2; break;
+            case 'O' : site->atomtype[counter] = 3; break;
+            case 'S' : site->atomtype[counter] = 4; break;
+            case 'F' : site->atomtype[counter] = 5; break;
+            //case 'Y' : site->atomtype[counter] = 6; break;
             default : PRINTF("Unknown atom type for atom %d (%s), exiting!\n", j, (*(atoms->atomname[j]))); exit(-1);
           }
-	  ct->atomtype_cplx[counter_cplx] = ct->site[i].atomtype[counter];
-          PRINTF("%5d (%5s, type %d)\n", ct->site[i].atom[counter], (*(atoms->atomname[ct->site[i].atom[counter]])), ct->site[i].atomtype[counter]+1);
+          //PRINTF("%5d (%5s, type %d)\n", site->atom[counter], (*(atoms->atomname[site->atom[counter]])), site->atomtype[counter]+1);
           counter++;
           counter_cplx++;
         }
+
+        /* find MM link atoms */
         else if (!strncmp((*(atoms->atomname[j])), "CMML", 4) ||    /* MM link atom may be a C, N or O atom. (in most cases only C atoms are recommended) */
                  !strncmp((*(atoms->atomname[j])), "NMML", 4) ||
                  !strncmp((*(atoms->atomname[j])), "OMML", 4) ||
                  !strncmp((*(atoms->atomname[j])), "SMML", 4)) { 
-          ct->site[i].MMLA[MMLAcounter] = counter;
-          ct->site[i].atom[counter] = j;
-          ct->atom_cplx[counter_cplx] = j;
-          ct->site[i].atomtype[counter] = 1;         /* the MM link atom will be substitute by a link hydrogen! */
-	  ct->atomtype_cplx[counter_cplx] = ct->site[i].atomtype[counter];
-          PRINTF("%5d (%5s, type %d)\n", ct->site[i].atom[counter], (*(atoms->atomname[ct->site[i].atom[counter]])), ct->site[i].atomtype[counter]+1);
+          site->MMLA[MMLAcounter] = counter;
+          site->atom[counter] = j;
+          site->atomtype[counter] = 1;         /* the MM link atom will be substitute by a link hydrogen! */
+          //PRINTF("%5d (%5s, type %d)\n", site->atom[counter], (*(atoms->atomname[site->atom[counter]])), site->atomtype[counter]+1);
           counter++;
           counter_cplx++;
           MMLAcounter++;
         }
-        if (counter > ct->site[i].atoms) {
-	  PRINTF("Site %d found to have %d atoms, which is more than the expected number of %d, exiting!\n", i, counter, ct->site[i].atoms);
+
+        /* ERROR checks */   
+        if (counter > site->atoms) {
+	  PRINTF("Site %d found to have %d atoms, which is more than the expected number of %d, exiting!\n", i, counter, site->atoms);
 	  exit(-1);
 	}
       }
     } 
-    PRINTF("\n");
+    //PRINTF("\n");
     if (QMLAcounter != MMLAcounter) {
       PRINTF("Site %d found to have %d QM link atom(s) but %d MM link atom(s). \n", i, QMLAcounter, MMLAcounter);
       exit(-1);
     }
+  }//end atom selection
+
+  /* get atoms of the complex */
+  counter=0;
+  for (i=0; i<ct->sites; i++)
+  for (j=0; j<ct->site[i].atoms; j++){
+    ct->atom_cplx[counter] = ct->site[i].atom[j];
+    ct->atomtype_cplx[counter] = ct->site[i].atomtype[j];
+    counter++;
   }
 
-  //  get correct ordering for QMLA and MMLA //
-  for (i = 0; i < ct->sites; i++){
-    for (j = 0; j < ct->site[i].bonds; j++){
+  /* find QM/MM caping pairs */
+  for (i = 0; i < ct->pool_size; i++){
+    for (j = 0; j < ct->pool_site[i].bonds; j++){
     bond_length_best=0.5; // = 0.5nm
     m=-1;
-    for (k = 0; k < ct->site[i].bonds; k++){
+    for (k = 0; k < ct->pool_site[i].bonds; k++){
       for (l=0; l < 3; l++){
-        X[l]=state->x[ct->site[i].atom[ct->site[i].MMLA[k]]][l];
-        Y[l]=state->x[ct->site[i].atom[ct->site[i].QMLA[j]]][l];
+        X[l]=state->x[ct->pool_site[i].atom[ct->pool_site[i].MMLA[k]]][l];
+        Y[l]=state->x[ct->pool_site[i].atom[ct->pool_site[i].QMLA[j]]][l];
       }
       dvec_sub(X,Y, bond);
       bond_length = dnorm(bond);
@@ -1017,377 +1042,83 @@ printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, ct->site[i].connections);
       exit(-1);
     }
     //switch best MMLA (m) with MMLA j 
-    l=ct->site[i].MMLA[j]; 
-    ct->site[i].MMLA[j]=ct->site[i].MMLA[m];
-    ct->site[i].MMLA[m]=l; 
+    l=ct->pool_site[i].MMLA[j]; 
+    ct->pool_site[i].MMLA[j]=ct->pool_site[i].MMLA[m];
+    ct->pool_site[i].MMLA[m]=l; 
     }
   }
 
-}//manual set up DIRTY
-
-  //manual set up DIRTY
-  if(GIESEPEPTIDE){
-  if(1){ //normal TDA fragments
-  ct->site[0].atom[0] = 10;
-  ct->site[0].atom[1] = 13;
-  ct->site[0].atom[2] = 14;
-  ct->site[0].atom[3] = 15;
-  ct->site[0].atom[4] = 16;
-  ct->site[0].atom[5] = 17;
-  ct->site[0].atom[6] = 18;
-  ct->site[0].atom[7] = 19;
-  ct->site[0].atom[8] = 20;
-  ct->site[0].atom[9] = 21;
-  ct->site[0].atom[10] = 24;
-  ct->site[0].atom[11] = 25;
-  ct->site[0].atom[12] = 26;
-  ct->site[0].atom[13] = 27;
-  ct->site[0].atom[14] = 28;
-  ct->site[0].atom[15] = 29;
-  ct->site[0].atom[16] = 30;
-  ct->site[0].atom[17] = 31;
-  ct->site[0].atom[18] = 32;
-  ct->site[0].atom[19] = 33;
-
-  ct->site[1].atom[0] = 8;
-  ct->site[1].atom[1] = 22;
-  ct->site[1].atom[2] = 23;
-  ct->site[1].atom[3] = 34;
-  ct->site[1].atom[4] = 35;
-  ct->site[1].atom[5] = 44;
-
-  ct->site[2].atom[0] = 44;
-  ct->site[2].atom[1] = 46;
-  ct->site[2].atom[2] = 47;
-  ct->site[2].atom[3] = 48;
-  ct->site[2].atom[4] = 49;
-  ct->site[2].atom[5] = 58;
-
-  ct->site[3].atom[0] = 58;
-  ct->site[3].atom[1] = 60;
-  ct->site[3].atom[2] = 61;
-  ct->site[3].atom[3] = 62;
-  ct->site[3].atom[4] = 63;
-  ct->site[3].atom[5] = 72;
-
-  ct->site[4].atom[0] = 72;
-  ct->site[4].atom[1] = 74;
-  ct->site[4].atom[2] = 75;
-  ct->site[4].atom[3] = 76;
-  ct->site[4].atom[4] = 77;
-  ct->site[4].atom[5] = 78;
-
-  ct->site[5].atom[0] = 80;
-  ct->site[5].atom[1] = 83;
-  ct->site[5].atom[2] = 84;
-  ct->site[5].atom[3] = 85;
-  ct->site[5].atom[4] = 86;
-  ct->site[5].atom[5] = 87;
-  ct->site[5].atom[6] = 88;
-  ct->site[5].atom[7] = 89;
-  ct->site[5].atom[8] = 90;
-  ct->site[5].atom[9] = 91;
-  ct->site[5].atom[10] = 94;
-  ct->site[5].atom[11] = 95;
-  ct->site[5].atom[12] = 96;
-  ct->site[5].atom[13] = 97;
-  ct->site[5].atom[14] = 98;
-  ct->site[5].atom[15] = 99;
-  ct->site[5].atom[16] = 100;
-  ct->site[5].atom[17] = 101;
-  ct->site[5].atom[18] = 102;
-  ct->site[5].atom[19] = 103;
-  ct->site[5].atom[20] = 104;
-  ct->site[5].atom[21] = 105;
-  ct->site[5].atom[22] = 106;
-  ct->site[5].atom[23] = 107;
+  mass = 0.0;
+  for (j=0; j<ct->pool_site[0].atoms; j++) {
+    mass += mdatoms->massT[ct->pool_site[0].atom[j]];
   }
-  if(0){ //all atom bb
-  ct->site[0].atom[0] = 10;
-  ct->site[0].atom[1] = 13;
-  ct->site[0].atom[2] = 14;
-  ct->site[0].atom[3] = 15;
-  ct->site[0].atom[4] = 16;
-  ct->site[0].atom[5] = 17;
-  ct->site[0].atom[6] = 18;
-  ct->site[0].atom[7] = 19;
-  ct->site[0].atom[8] = 20;
-  ct->site[0].atom[9] = 21;
-  ct->site[0].atom[10] = 24;
-  ct->site[0].atom[11] = 25;
-  ct->site[0].atom[12] = 26;
-  ct->site[0].atom[13] = 27;
-  ct->site[0].atom[14] = 28;
-  ct->site[0].atom[15] = 29;
-  ct->site[0].atom[16] = 30;
-  ct->site[0].atom[17] = 31;
-  ct->site[0].atom[18] = 32;
-  ct->site[0].atom[19] = 33;
-
-  ct->site[1].atom[0] = 8;
-  ct->site[2].atom[0] = 22;
-  ct->site[3].atom[0] = 23;
-for (i=34; i<79; i++)
-  ct->site[i-30].atom[0] = i;
-
-  ct->site[49].atom[0] = 80;
-  ct->site[49].atom[1] = 83;
-  ct->site[49].atom[2] = 84;
-  ct->site[49].atom[3] = 85;
-  ct->site[49].atom[4] = 86;
-  ct->site[49].atom[5] = 87;
-  ct->site[49].atom[6] = 88;
-  ct->site[49].atom[7] = 89;
-  ct->site[49].atom[8] = 90;
-  ct->site[49].atom[9] = 91;
-  ct->site[49].atom[10] = 94;
-  ct->site[49].atom[11] = 95;
-  ct->site[49].atom[12] = 96;
-  ct->site[49].atom[13] = 97;
-  ct->site[49].atom[14] = 98;
-  ct->site[49].atom[15] = 99;
-  ct->site[49].atom[16] = 100;
-  ct->site[49].atom[17] = 101;
-  ct->site[49].atom[18] = 102;
-  ct->site[49].atom[19] = 103;
-  ct->site[49].atom[20] = 104;
-  ct->site[49].atom[21] = 105;
-  ct->site[49].atom[22] = 106;
-  ct->site[49].atom[23] = 107;
-  }
-  if(0){ // bb as one fragment
-  ct->site[0].atom[0] = 10;
-  ct->site[0].atom[1] = 13;
-  ct->site[0].atom[2] = 14;
-  ct->site[0].atom[3] = 15;
-  ct->site[0].atom[4] = 16;
-  ct->site[0].atom[5] = 17;
-  ct->site[0].atom[6] = 18;
-  ct->site[0].atom[7] = 19;
-  ct->site[0].atom[8] = 20;
-  ct->site[0].atom[9] = 21;
-  ct->site[0].atom[10] = 24;
-  ct->site[0].atom[11] = 25;
-  ct->site[0].atom[12] = 26;
-  ct->site[0].atom[13] = 27;
-  ct->site[0].atom[14] = 28;
-  ct->site[0].atom[15] = 29;
-  ct->site[0].atom[16] = 30;
-  ct->site[0].atom[17] = 31;
-  ct->site[0].atom[18] = 32;
-  ct->site[0].atom[19] = 33;
-
-  ct->site[1].atom[0] = 8;
-  ct->site[1].atom[1] = 22;
-  ct->site[1].atom[2] = 23;
-for (i=34; i<80; i++)
-  ct->site[1].atom[i-31] = i;
-
-  ct->site[2].atom[0] = 80;
-  ct->site[2].atom[1] = 83;
-  ct->site[2].atom[2] = 84;
-  ct->site[2].atom[3] = 85;
-  ct->site[2].atom[4] = 86;
-  ct->site[2].atom[5] = 87;
-  ct->site[2].atom[6] = 88;
-  ct->site[2].atom[7] = 89;
-  ct->site[2].atom[8] = 90;
-  ct->site[2].atom[9] = 91;
-  ct->site[2].atom[10] = 94;
-  ct->site[2].atom[11] = 95;
-  ct->site[2].atom[12] = 96;
-  ct->site[2].atom[13] = 97;
-  ct->site[2].atom[14] = 98;
-  ct->site[2].atom[15] = 99;
-  ct->site[2].atom[16] = 100;
-  ct->site[2].atom[17] = 101;
-  ct->site[2].atom[18] = 102;
-  ct->site[2].atom[19] = 103;
-  ct->site[2].atom[20] = 104;
-  ct->site[2].atom[21] = 105;
-  ct->site[2].atom[22] = 106;
-  ct->site[2].atom[23] = 107;
-  }
-  counter_cplx=0;
-  for(i=0 ; i<ct->sites; i++)
-  for(j=0; j <ct->site[i].atoms; j++){
-    ct->atom_cplx[counter_cplx] = ct->site[i].atom[j];
-    counter_cplx++;
-  }
-  counter_cplx=0;
-  for(i=0 ; i<ct->sites; i++){
-    counter=0;
-    for(j=0; j <ct->site[i].atoms; j++){
-         if (!strncmp((*(atoms->atomname[ct->site[i].atom[j]])), "CQM", 3) ||     
-                 !strncmp((*(atoms->atomname[ct->site[i].atom[j]])), "HQM", 3) ||
-                 !strncmp((*(atoms->atomname[ct->site[i].atom[j]])), "NQM", 3) ||
-                 !strncmp((*(atoms->atomname[ct->site[i].atom[j]])), "OQM", 3) ||
-                 !strncmp((*(atoms->atomname[ct->site[i].atom[j]])), "SQM", 3) ||
-                 !strncmp((*(atoms->atomname[ct->site[i].atom[j]])), "YQM", 3) ) {
-//printf("%c\n", (*(atoms->atomname[ct->site[i].atom[j]]))[0]);
-          switch ((*(atoms->atomname[ct->site[i].atom[j]]))[0]) {
-            case 'C' : ct->site[i].atomtype[counter] = 0; break;
-            case 'H' : ct->site[i].atomtype[counter] = 1; break;
-            case 'N' : ct->site[i].atomtype[counter] = 2; break;
-            case 'O' : ct->site[i].atomtype[counter] = 3; break;
-            case 'S' : ct->site[i].atomtype[counter] = 4; break;
-            case 'Y' : ct->site[i].atomtype[counter] = 5; break;
-            default : PRINTF("Unknown atom type for atom %d (%s), exiting!\n", j, (*(atoms->atomname[j]))); exit(-1);
-          }
-	  ct->atomtype_cplx[counter_cplx] = ct->site[i].atomtype[counter];
-          counter++;
-          counter_cplx++;
-        }
-    }
-  }
-  printf("end manual set-up \n");
-  }
-//END DIRTY manual input
+  ct->adapt_inv_tot_mass = 1.0 / mass;
 
 
-  /*
-  if (ct->qmmm == 0) {
-    for (i=0; i<ct->sites; i++)
-      ct->extcharges[i] = 0;
-    ct->extcharges_cplx = 0;
-  }
-  */
    
-  ///////* Deal with the external charges */////////
-
-  /* Individual sites (including the number of extcharges) */
-  switch (ct->qmmm) {
-    case 1:
-    case 3:
-      ct->extcharges_cplx = top_global->natoms;
-      break;
-    case 2:
-      ct->extcharges_cplx = mm_list_size;
-      break;
-    default:
-      ct->extcharges_cplx = 0;
-  }
-  for (i = 0 ; i < ct->sites; i++) {
-    /* number of extcharges */
-    switch (ct->qmmm) {
-      case 1:
-      case 3:
-        ct->site[i].extcharges = top_global->natoms - ct->site[i].atoms;
-        ct->extcharges_cplx -= ct->site[i].atoms;
-        for (j = 0; j <ct->site[i].bonds ; j++){
-          ct->site[i].extcharges -= ct->site[i].nochrs[j];
-          ct->extcharges_cplx -= ct->site[i].nochrs[j];
-        }
-        break;
-      case 2:
-        /* NUMBER OF EXTCHARGES HERE! */
-        ct->site[i].extcharges = mm_list_size;
-        /* DO NOT SUBTRACT ANYTHING HERE, YET! */
-        break;
-      default:
-        ct->site[i].extcharges = 0;
-    }
-  }
-
+  /////* select the external charges */////
   if (ct->qmmm > 0) {
-  if (!GIESEPEPTIDE){
-    snew(counter_array, ct->sites);            
-    snew(ct->extcharge_cplx, ct->extcharges_cplx);
-    for (i=0; i<ct->sites; i++)
-      snew(ct->site[i].extcharge, ct->site[i].extcharges);
-
-    counter_cplx = counter_modif_cplx = 0;      
+    for (j = 0; j < top_global->natoms; j++)
+      ct->extcharge_cplx[j]=-1;
+    for (i=0; i<ct->pool_size; i++)
+      for (j = 0; j < top_global->natoms; j++)
+        ct->pool_site[i].extcharge[j]=-1; 
+    
+    snew(counter_array, ct->pool_size);            
     for (j = 0; j < top_global->natoms; j++) 
     if (ct->qmmm == 1 || ct->qmmm == 3 || ct_atom_in_group(j, mm_list, mm_list_size)) { /* either normal QM/MM or group-QM/MM and j is in the group */
-      environment_cplx = 1; /* default: all atoms are environment */
-      modif_cplx = 0;
-      for (i = 0; i < ct->sites; i++){
-        environment = 1;
+      for (i = 0; i < ct->pool_size; i++){
+        site=&(ct->pool_site[i]);
+        environment = 1;  /* default: all atoms are environment */
 //PRINTF("j %d i %d atoms.atom[j].resnr %d ct->site[i].resnr %d \n" ,j, i, atoms.atom[j].resnr , ct->site[i].resnr);
-        if(atoms->resinfo[atoms->atom[j].resind].nr == ct->site[i].resnr){   /* in same residue -> further investigations */
-          for(k = 0; k < ct->site[i].bonds; k++){
-            for(l = 0; l < ct->site[i].addchrs[k]; l++)
-              if(!strcmp((*(atoms->atomname[j])), ct->site[i].addchr[k][l])) {      /* charge will be modified to electro-neutralize */
-                ct->site[i].modif_extcharge[k][l] = counter_array[i];
-                modif_cplx = 1;
+        if(atoms->resinfo[atoms->atom[j].resind].nr == site->resnr){   /* in same residue -> further investigations */
+          for(k = 0; k < site->bonds; k++){
+            for(l = 0; l < site->addchrs[k]; l++)
+              if(!strcmp((*(atoms->atomname[j])), site->addchr[k][l])) {      /* charge will be modified to electro-neutralize */
+                site->modif_extcharge[k][l] = counter_array[i];
               }
-            for(l = 0; l < ct->site[i].nochrs[k]; l++){
-              if (!strcmp((*(atoms->atomname[j])), ct->site[i].nochr[k][l])) {      /* charge will be ignored */
+            for(l = 0; l < site->nochrs[k]; l++){
+              if (!strcmp((*(atoms->atomname[j])), site->nochr[k][l])) {      /* charge will be ignored */
                 environment = 0;
-                environment_cplx = 0;
               }
             }
           }
-          for(k = 0; k < ct->site[i].atoms; k++)
-            if(j == ct->site[i].atom[k]) {  /* exclude QM atoms */
+          for(k = 0; k < site->atoms; k++)
+            if(j == site->atom[k]) {  /* exclude QM atoms */
               environment = 0;
-              environment_cplx = 0;
             }
         }else{ /* atoms in neighboring residues are ignored if one connection atom of site i lies in this residue */
-          for(k=0; k<ct->site[i].connections; k++)
-          if(atoms->resinfo[atoms->atom[j].resind].nr == atoms->resinfo[atoms->atom[ct->site[i].QMCN[k][0]].resind].nr||
-	     atoms->resinfo[atoms->atom[j].resind].nr == atoms->resinfo[atoms->atom[ct->site[i].QMCN[k][1]].resind].nr){
+          for(k=0; k<site->connections; k++)
+          if(atoms->resinfo[atoms->atom[j].resind].nr == atoms->resinfo[atoms->atom[site->QMCN[k][0]].resind].nr||
+	     atoms->resinfo[atoms->atom[j].resind].nr == atoms->resinfo[atoms->atom[site->QMCN[k][1]].resind].nr){
 	    environment = 0;
-            environment_cplx = 0;
           }
 	}
 
         if (environment) {
-          ct->site[i].extcharge[counter_array[i]] = j;
+          site->extcharge[counter_array[i]] = j;
           counter_array[i]++;
         }
       }
-      if (environment_cplx) {
-        ct->extcharge_cplx[counter_cplx] = j;
-        if (modif_cplx) {
-          ct->modif_extcharge_cplx[counter_modif_cplx] = counter_cplx;
-          counter_modif_cplx++;
-        }
-        counter_cplx++;
-      }
     }
-   }
 
-    // use excluded group charge scheme // 
-    if (GIESEPEPTIDE){
-    printf("excluded group start\n");
-    snew(counter_array, ct->sites);            
-    snew(ct->extcharge_cplx, ct->extcharges_cplx);
+    /* set extcharges of complex */
+    /* and determine which should be modified */
+    for (i=0; i<top_global->natoms; i++ )
+      ct->extcharge_cplx[i]=i;
+    for (i=0; i<ct->sites; i++) 
+      k=find_intersection(top_global->natoms, ct->extcharge_cplx, ct->site[i].extcharge, ct->extcharge_cplx); // this should successively reduce the charges in ct->extcharge_cplx
+      for (j=0;j<k; j++)
+        ct->extcharge_cplx[i]=-1;     
+    counter=0;
+    for (l=0; l<ct->extcharges_cplx; l++)
     for (i=0; i<ct->sites; i++)
-      snew(ct->site[i].extcharge, ct->site[i].extcharges);
-    for (i = 0; i < ct->sites; i++)
-      counter_array[i]=0;
-    counter_cplx =0;
-
-    for (j = 0; j < top_global->natoms; j++){ 
-      environment_cplx = 1; /* default: all atoms are environment */
-      for (i = 0; i < ct->sites; i++){
-        environment = 1;
-        for (k = 0; k< ct->site[i].atoms; k++){
-//printf("site %d atom %d\n", i, k);
-//printf("resnr %d  %d\n", atoms->resinfo[atoms->atom[j].resind].nr, atoms->resinfo[atoms->atom[ct->site[i].atom[k]].resind].nr);
-//printf("resind %d  %d\n", atoms->atom[j].resind, atoms->atom[ct->site[i].atom[k]].resind);
-//printf("resind %d  %d\n", atoms->resinfo[atoms->atom[j].resind].nr , atoms->resinfo[atoms->atom[ct->site[i].atom[k]].resind].nr );
-          if (atoms->resinfo[atoms->atom[j].resind].nr == atoms->resinfo[atoms->atom[ct->site[i].atom[k]].resind].nr){ // exlude all atoms of a residue (charge group) if at least one QM atom is part of it //      
-            environment = 0;
-            environment_cplx = 0;
-          }
-        }
-        if (environment) {
-          ct->site[i].extcharge[counter_array[i]] = j;
-          counter_array[i]++;
-        }
-      }
-      if (environment_cplx) {
-        ct->extcharge_cplx[counter_cplx] = j;
-        counter_cplx++;
-      }
-    } 
-    ct->extcharges_cplx= counter_cplx;
-    //for (i = 0; i < ct->sites; i++)
-    //  ct->site[i].extcharges = counter_array[i];
+    for (j=0; j<ct->site[i].bonds; j++)
+    for (k=0; k<ct->site[i].addchrs[j]; k++)
+    if (ct->extcharge_cplx[counter] == ct->site[i].extcharge[ ct->site[i].modif_extcharge[j][k] ]){ // if one of the extcharges of the complex is the same atom that was modified in the monomer calculation, then also modify it in the complex calculation.
+      ct->modif_extcharge_cplx[counter]=l;
+      counter++;
     }
-
 
     /* verify the number of ext. charges */
     PRINTF("Number of external charges:\n");
@@ -1402,7 +1133,7 @@ for (i=34; i<80; i++)
       }
     }
     PRINTF("Complex: original group %d, (possibly) restricted to %d\n", ct->extcharges_cplx, counter_cplx);
-    ct->extcharges_cplx = counter_cplx;
+    //ct->extcharges_cplx = counter_cplx;
     //if (counter_modif_cplx != 2*ct->sites) {
     PRINTF("         number of atoms cutting QM/MM boundary = %d (there are %d sites)\n", counter_modif_cplx, ct->sites);
     //  exit(-1);
@@ -1412,8 +1143,36 @@ for (i=34; i<80; i++)
         *(atoms->atomname[ct->modif_extcharge_cplx[j]]), atoms->resinfo[atoms->atom[ct->modif_extcharge_cplx[j]].resind].nr+1);
     }
 
+  }//end QMMM>0
 
+
+  ///// JOB SPECIFIC PREPARATIONS /////
+  /* NEGF data */
+  if (ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC) {
+    snew(ct->negf_arrays, 1);
+    ct->negf_arrays->n[0] = ct->sites;
+    fscanf(f, "%ld\n", ct->negf_arrays->n_lorentz);
+    fscanf(f, "%lf %lf\n", ct->negf_arrays->e_f_left, ct->negf_arrays->e_f_right);
+    fscanf(f, "%lf %ld %ld\n", ct->negf_arrays->temp, ct->negf_arrays->n_poles_l, ct->negf_arrays->n_poles_r);
+    fscanf(f, "%lf %lf %lf\n", ct->negf_arrays->gam_l, ct->negf_arrays->eps_l, ct->negf_arrays->w0_l);
+    fscanf(f, "%lf %lf %lf\n", ct->negf_arrays->gam_r, ct->negf_arrays->eps_r, ct->negf_arrays->w0_r);
+    PRINTF("Parameters read for the non-eq. Green's functions:\n");
+    PRINTF("  n = %ld, n_lorentz = %ld\n", ct->negf_arrays->n[0], ct->negf_arrays->n_lorentz[0]);
+    PRINTF("  e_f_left = %lf, e_f_right = %lf\n", ct->negf_arrays->e_f_left[0], ct->negf_arrays->e_f_right[0]);
+    PRINTF("  temp = %lf, n_poles_l = %ld, n_poles_r = %ld\n", ct->negf_arrays->temp[0], ct->negf_arrays->n_poles_l[0], ct->negf_arrays->n_poles_r[0]);
+    PRINTF("  gam_l = %lf, eps_l = %lf, w0_l = %lf\n", ct->negf_arrays->gam_l[0], ct->negf_arrays->eps_l[0], ct->negf_arrays->w0_l[0]);
+    PRINTF("  gam_r = %lf, eps_r = %lf, w0_r = %lf\n", ct->negf_arrays->gam_r[0], ct->negf_arrays->eps_r[0], ct->negf_arrays->w0_r[0]);
   }
+  /* NEGF initialization including initial density matrix */
+  if (ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC) {
+    PRINTF("Initializing the NEGF calculation\n");
+#ifdef GMX_MPI
+    if (ct_mpi_rank == 0)
+#endif
+    negf_init_arrays(ct->negf_arrays, &(ct->rk_timestep), ct->wf);
+  }
+
+  /* DO HERE PREPARATIONS FOR BORNOPPENHEIMER! */
   if (ct->jobtype == cteBORNOPPENHEIMER)
     snew(ct->born_overlap, ct->dim);
 	    
@@ -1451,11 +1210,9 @@ for (i=34; i<80; i++)
     ct->tfs_initialization_step = 1;
   }
 
-
   /* DO HERE PREPARATIONS FOR TFL! */
   if (ct->jobtype == cteTULLYLOC) {
     ct->surface = 0;
-   
     snew(ct->tfs_popul, 2*ct->dim); /* complex array: Re(0), Re(1), ..., Re(n-1), Im(0), Im(1), ..., Im(n-1) */
     /* initial conditions - ground state occupied */
     ct->tfs_popul[0] = 1.;     //changed if specific wf choosend as startign point                                                  
@@ -1481,15 +1238,7 @@ for (i=34; i<80; i++)
     for(i=0;i<ct->dim;i++){ ct->tfl_is_in_system[i]=1; ct->tfl_is_in_system_old[i]=1; }
     ct->tfl_num_of_states=ct->dim;
     ct->tfl_num_of_states_old=ct->dim;
-   
-
   }
-
-
-
-
-
-
 
   /* DO HERE PREPARATIONS FOR PREZHDO! */
   if (ct->jobtype == ctePREZHDOSFHOPPING) {
@@ -1521,7 +1270,6 @@ for (i=34; i<80; i++)
     snew(ct->ev_adiab_old, ct->dim); 
     ct->tfs_initialization_step = 1;
   }
-
 
   /* DO HERE PREPARATIONS FOR PERSICO! */
   if (ct->jobtype == ctePERSICOSFHOPPING) {
@@ -1590,12 +1338,9 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
 void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *slko_path)
 #endif
 {
-  // const char *slko_path = "/home/tomas/DFTB/slko/";
   const char *type_symbols = "chnosf";
   const char *suffix1 = "-c.spl";
-  //const char *suffix2 = "-8-7-c.spl";
-  const char *suffix2 = "-uncomp-c.spl"; // now diffrent folder for different radii  
-  //const char *suffix2 = "-8-uncomp-c.spl"; // basis with r_dens=infinity r_wf=8au
+  const char *suffix2 = "-uncomp-c.spl"; // now diffrent folder for each parameter set with diefferent r_dens and r_wf 
 
   char filename[128];
   int i, j, k, l, izpj, counter;
@@ -1608,22 +1353,6 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
   printf("DFTB initialization\n");
 #endif
 
-  //snew(dftb, 1);
-
-  /* assign the number of shells in atom types */
-  //dftb->lmax[0] = 2; //C
-  //dftb->lmax[1] = 1; //H
-  //dftb->lmax[2] = 2; //N
-  //dftb->lmax[3] = 2; //O
-  //dftb->lmax[4] = 3; //S
-  //dftb->lmax[5] = 1; //Y pseudo-atom
-
-  /*
-  snew(dftb->qzero1, DFTB_MAXTYPES);
-  snew(dftb->uhubb1, DFTB_MAXTYPES);
-  snew(dftb->qzero2, DFTB_MAXTYPES);
-  snew(dftb->uhubb2, DFTB_MAXTYPES);
-  */
 
   for (i=0; i<DFTB_MAXTYPES; i++) {
     dftb->qzero1[i] = 0.0;
@@ -1671,7 +1400,7 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
       PRINTF("skfile for pair %d-%d, phase 1: %s\n", i+1, j+1, filename);
       fclose(f);
 
-      /* read the tables for DFTB phase 2 - calculation of monomers */
+      /* read the tables for DFTB phase 2 - calculation of complex */
       sprintf(filename, "%s%c%c%s", slko_path, type_symbols[i], type_symbols[j], suffix2);
       f = fopen(filename, "r");
       if (f == NULL) {
@@ -1705,11 +1434,9 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
       fclose(f);
     }
   }
-  //printf("CHECK ###############################################3 DFTB initialization at rank %d\n", ct_mpi_rank);
 
   /* deal with phase1 and certain parts of phase2 */
   snew(dftb->phase1, ct->sites);
-  //snew(dftb->phase2, 1);
   dftb->phase2.nn = 0;
   dftb->phase2.ne = ct->extcharges_cplx;
   dftb->phase2.nel = 0;
@@ -1749,8 +1476,6 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
     snew(dftb->phase1[i].qmulli, dftb->phase1[i].norb);
     snew(dftb->phase1[i].ev, dftb->phase1[i].norb);
     snew(dftb->phase1[i].occ, dftb->phase1[i].norb);
-    //dftb->phase1[i].a = (double **) malloc(dftb->phase1[i].norb * sizeof(double *));
-    //  dftb->phase1[i].a[0] = (double *) malloc(dftb->phase1[i].norb * dftb->phase1[i].norb * sizeof(double));
     snew(dftb->phase1[i].a, dftb->phase1[i].norb);
       snew(dftb->phase1[i].a[0], SQR(dftb->phase1[i].norb));
       for(j = 1; j < dftb->phase1[i].norb; j++)
@@ -1765,22 +1490,16 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
       for(j = 1; j < dftb->phase1[i].norb; j++)
         dftb->phase1[i].a_ref[j] = dftb->phase1[i].a_ref[0] + j * dftb->phase1[i].norb;
 
-    //dftb->phase1[i].b = (double **) malloc(dftb->phase1[i].norb * sizeof(double *));
-    //  dftb->phase1[i].b[0] = (double *) malloc(dftb->phase1[i].norb * dftb->phase1[i].norb * sizeof(double));
     snew(dftb->phase1[i].b, dftb->phase1[i].norb);
       snew(dftb->phase1[i].b[0], SQR(dftb->phase1[i].norb));
       for(j = 1; j < dftb->phase1[i].norb; j++)
         dftb->phase1[i].b[j] = dftb->phase1[i].b[0] + j * dftb->phase1[i].norb;
     snew(dftb->phase1[i].a_trans, dftb->phase1[i].norb * dftb->phase1[i].norb);
     snew(dftb->phase1[i].b_trans, dftb->phase1[i].norb * dftb->phase1[i].norb);
-    //dftb->phase1[i].hamil = (double **) malloc(dftb->phase1[i].norb * sizeof(double *));
-    //  dftb->phase1[i].hamil[0] = (double *) malloc(dftb->phase1[i].norb * dftb->phase1[i].norb * sizeof(double));
     snew(dftb->phase1[i].hamil, dftb->phase1[i].norb);
       snew(dftb->phase1[i].hamil[0], SQR(dftb->phase1[i].norb));
       for(j = 1; j < dftb->phase1[i].norb; j++)
         dftb->phase1[i].hamil[j] = dftb->phase1[i].hamil[0] + j * dftb->phase1[i].norb;
-    //dftb->phase1[i].overl = (double **) malloc(dftb->phase1[i].norb * sizeof(double *));
-    //  dftb->phase1[i].overl[0] = (double *) malloc(dftb->phase1[i].norb * dftb->phase1[i].norb * sizeof(double));
     snew(dftb->phase1[i].overl, dftb->phase1[i].norb);
       snew(dftb->phase1[i].overl[0], SQR(dftb->phase1[i].norb));
       for(j = 1; j < dftb->phase1[i].norb; j++)
@@ -2148,11 +1867,11 @@ void prepare_charge_transfer(matrix state_box, t_mdatoms *mdatoms, dftb_t *dftb,
   /* read the box dimensions */
   for (j=0; j<DIM; j++){
     box[j] = state_box[j][j] * NM_TO_BOHR;
-  //  printf("BOX     %12.7f %12.7f %12.7f\n", state_box[j][0], state_box[j][1], state_box[j][2]);
+    //printf("BOX     %12.7f %12.7f %12.7f\n", state_box[j][0], state_box[j][1], state_box[j][2]);
   }
   if (ct->qmmm == 3) {
     copy_mat(state_box, dftb->box_pme);
-//    printf("BOX_PME %12.7f %12.7f %12.7f\n", dftb->box_pme[XX][XX], dftb->box_pme[YY][YY], dftb->box_pme[ZZ][ZZ]);
+    //printf("BOX_PME %12.7f %12.7f %12.7f\n", dftb->box_pme[XX][XX], dftb->box_pme[YY][YY], dftb->box_pme[ZZ][ZZ]);
   }
 
 
@@ -2194,14 +1913,14 @@ void prepare_charge_transfer(matrix state_box, t_mdatoms *mdatoms, dftb_t *dftb,
     printf("Site %d - %d atoms\n", i+1, dftb->phase1[i].nn);
     for (j=0; j<dftb->phase1[i].nn; j++){
       //printf("%d %d %12.7f%12.7f%12.7f\n",counter, dftb->phase1[i].izp[j]+1, dftb->phase1[i].x[j][0]*0.52, dftb->phase1[i].x[j][1]*0.52, dftb->phase1[i].x[j][2]*0.52);
-      //printf("C %12.7f%12.7f%12.7f\n", dftb->phase1[i].x[j][0]/NM_TO_BOHR*10, dftb->phase1[i].x[j][1]/NM_TO_BOHR*10, dftb->phase1[i].x[j][2]/NM_TO_BOHR*10);
+      printf("C %12.7f%12.7f%12.7f\n", dftb->phase1[i].x[j][0]/NM_TO_BOHR*10, dftb->phase1[i].x[j][1]/NM_TO_BOHR*10, dftb->phase1[i].x[j][2]/NM_TO_BOHR*10);
       counter++;
     }
   }
 // */
 
 //write out total QM zone
-///*
+/*
  if (ct->first_step){
   char c;
   printf("%d \n", dftb->phase2.nn);
@@ -2233,7 +1952,7 @@ void prepare_charge_transfer(matrix state_box, t_mdatoms *mdatoms, dftb_t *dftb,
     }
     // dsvmul(dftb->phase1[i].inv_tot_mass, masscoord, dftb->phase1[i].com); - WRONG, ISN'T IT???
     dsvmul(dftb->phase1[i].inv_tot_mass, com, dftb->phase1[i].com);
-//    printf("COM base %d: %f %f %f\n", i+1, dftb->phase1[i].com[XX] * 0.52, dftb->phase1[i].com[YY] * 0.52, dftb->phase1[i].com[ZZ] * 0.52);
+    //printf("COM base %d: %f %f %f\n", i+1, dftb->phase1[i].com[XX] * 0.52, dftb->phase1[i].com[YY] * 0.52, dftb->phase1[i].com[ZZ] * 0.52);
   }
 
   // construct the Hubbard matrix (MOVED TO md.c) //
@@ -2306,7 +2025,6 @@ void prepare_charge_transfer(matrix state_box, t_mdatoms *mdatoms, dftb_t *dftb,
       for (k=0; k<DIM; k++) {
         dftb->phase2.xe[j][k] = NM_TO_BOHR * x_ct[ct->extcharge_cplx[j]][k];
       }
-//printf("H %f %f %f \n", dftb->phase2.xe[j][0]/NM_TO_BOHR*10, dftb->phase2.xe[j][1]/NM_TO_BOHR*10,  dftb->phase2.xe[j][2]/NM_TO_BOHR*10);
       if (ct->qmmm < 3) {
       mindist = 1.e10;
       clear_ivec(shiftmin);
@@ -2851,18 +2569,12 @@ printf("rect\n");
 void do_dftb_phase1(charge_transfer_t *ct, dftb_t *dftb, MPI_Comm ct_mpi_comm, int ct_mpi_rank, int ct_mpi_size)
 {
   int i, return_value;
-   //printf("rank %d and size  %d\n", ct_mpi_rank, ct_mpi_size);
 
-   printf("do_dftb_phase1 start at rank %d at %f\n", ct_mpi_rank, (double) clock()/CLOCKS_PER_SEC);
-/*
-  if (ct_mpi_rank > 0) {
-    ct_loc = (charge_transfer_t *) malloc(sizeof (charge_transfer_t));
-    ct_loc->sites = ct->sites;
-  }
-*/
+  printf("do_dftb_phase1 start at rank %d at %f\n", ct_mpi_rank, (double) clock()/CLOCKS_PER_SEC);
+
   for (i=0; i<ct->sites; i++)
     if (i % ct_mpi_size == ct_mpi_rank) {
-      //printf("Doing nucleobase %d at rank %d\n", i, ct_mpi_rank);
+      //printf("Doing residue %d at rank %d\n", ct->site[i].resnr, ct_mpi_rank);
       run_dftb1(ct, dftb, i);
       if ( ct->jobtype != cteTDA )
         sort_mobasis(dftb, ct, i);
@@ -6981,6 +6693,7 @@ printf("overlap ortho/ortho (hybrid matrix)\n");
   norm=0;
   for (i=0; i<ct->dim; i++) 
     norm += SQR(ct->wf[i]) + SQR(ct->wf[i+ct->dim]);
+  printf("norm changed to %f due to projection. Rescaling wavefunction\n", norm);
   for (i=0; i < 2*ct->dim; i++) 
     ct->wf[i] /= sqrt(norm); 
 
@@ -7039,13 +6752,12 @@ dftb_phase1_t dftb1;
 
   dftb1=dftb->phase1[i];
 
-  if (ct->sort_initialization_step[i]){ 
+  if (ct->first_step){ 
     for (m =0; m<dftb1.norb; m++)
     for (n =0; n<dftb1.norb; n++){
       dftb1.a_old[m][n] = dftb1.a[m][n];
       dftb1.a_ref[m][n] = dftb1.a[m][n];
     }
-    ct->sort_initialization_step[i]=0;
   }
 
   // calc overlap with previous step //
@@ -7122,6 +6834,213 @@ dftb_phase1_t dftb1;
 
   return;
 }
+
+
+void search_starting_site(matrix state_box, t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, rvec *x_ct, char *slko_path, gmx_mtop_t *top_global, rvec *gromacs_x){
+  int original_nsites, i,j , lowest_site, counter;
+  double Elowest, Esite;
+  rvec *dummy_x;
+  matrix dummy_matrix;
+  Elowest=1000.0;
+
+  /* perform DFTB calculations on every site to find the lowest energy 
+     this will determine the starting site */
+  printf("Scanning for site with lowest energy.\n scanning site:\n");
+  original_nsites=ct->sites;
+  ct->sites=1;
+  for (i=0; i < ct->pool_size; i++){
+    ct->site[0] = ct->pool_site[i];
+    //printf("%d resnr %d addr %p\n",i, ct->pool_site[i].resnr, &(ct->pool_site[i].resnr) );
+    //printf("%d resnr %d addr %p\n",i, ct->site[0].resnr, &(ct->site[0].resnr));
+    prepare_charge_transfer(state_box, mdatoms, dftb, ct, x_ct);
+    run_dftb1(ct, dftb, 0);
+    for (j = 0; j < ct->site[0].homos; j++){
+      Esite = dftb->phase1[0].ev[ct->site[0].homo[j]-1];
+      Esite *= ct->is_hole_transfer ? -1.0 : 1.0 ;
+      if (Esite < Elowest){
+        Elowest=Esite;
+        lowest_site=i;
+        copy_dvec(dftb->phase1[0].com, ct->coc);
+        printf("found residue %d  MO %d  E = %f ha  COM[Angstrom] = %f %f %f\n",ct->pool_site[i].resnr,ct->pool_site[i].homo[j], Esite,  ct->coc[XX] * 0.52, ct->coc[YY] * 0.52, ct->coc[ZZ] * 0.52);
+      }
+    }
+  }
+  printf("starting residue is poolsite %d res %d  COC[Angstrom] = %f %f %f\n",lowest_site, ct->pool_site[lowest_site].resnr, ct->coc[XX] * 0.52, ct->coc[YY] * 0.52, ct->coc[ZZ] * 0.52);
+  ct->sites=original_nsites;
+ 
+
+  /* find nearest neighborst of the starting site */
+  for(i=0; i<ct->sites; i++)
+    ct->site[i] = ct->pool_site[i];
+  i=0;
+  while(adapt_QMzone(ct,x_ct, mdatoms, top_global, state_box, gromacs_x)){i++;}
+  printf("Initially adapted QM zone %d times.\n", i);
+  
+  /* set starting wavefunction */
+  counter=0;
+  for(i=0; i<ct->sites; i++){  
+    for(j=0; j<ct->site[i].homos; j++){
+      if(ct->site[i].resnr == ct->pool_site[lowest_site].resnr && (j == ct->site[i].homos-1)){
+        ct->wf[counter]=1.0; ct->wf[counter+ct->dim]=0.0;
+      }else{
+        ct->wf[counter]=0.0; ct->wf[counter+ct->dim]=0.0;
+      }
+    counter++;
+    }
+  }
+  printf("starting wavefunction:\n");
+  for (i=0; i<ct->dim; i++)
+    printf("%10.7f %10.7f\n", ct->wf[i], ct->wf[i + ct->dim]);
+
+
+  return;
+}
+
+int adapt_QMzone(charge_transfer_t *ct, rvec *x_ct , t_mdatoms *mdatoms, gmx_mtop_t *top_global, matrix state_box, rvec *gromacs_x)
+{
+  int i,j,l,k,counter, nearest_inactive=-1, farthest_active=-1, adapted=0;
+  dvec bond, com, coord, masscoord;
+  double bond_length, best_inactive_dist, best_active_dist, tot_occ, norm;
+  rvec box_center, dx;
+
+  /* get center of mass for every site */
+  counter = 0;
+  for (i=0; i<ct->pool_size; i++) {
+    clear_dvec(com);
+    for (j=0; j<ct->pool_site[i].atoms; j++) {
+      for (k=0; k<3; k++)
+        coord[k] =  x_ct[ct->pool_site[i].atom[j]][k] * NM_TO_BOHR; //take here x_ct for wich molecules were made whole again. in gromacs_x all atoms are put in the box.
+      dsvmul(mdatoms->massT[ct->pool_site[i].atom[j]], coord, masscoord);
+      dvec_inc(com, masscoord);
+    }
+    dsvmul(ct->adapt_inv_tot_mass, com, ct->pool_site[i].com);
+    //printf("residue %d  COM[Angstrom]: %f %f %f\n", ct->pool_site[i].resnr, ct->pool_site[i].com[XX] * 0.52, ct->pool_site[i].com[YY] * 0.52, ct->pool_site[i].com[ZZ] * 0.52);
+  }
+
+
+  /* search for nearest inactive site */
+  best_inactive_dist = 100000.0;
+  for (i=0; i < ct->pool_size; i++)
+  if (! ct->pool_site[i].active){
+    dvec_sub(ct->pool_site[i].com ,ct->coc, bond);
+    if (dnorm(bond) < best_inactive_dist){
+      best_inactive_dist = dnorm(bond);
+      nearest_inactive=i;
+    }
+  }
+  printf("nearest site is %d (res %d) dist %f\n",nearest_inactive,ct->pool_site[nearest_inactive].resnr, best_inactive_dist);
+
+  /* search for farthermost active site */
+  best_active_dist = 0.0;
+  for (i=0; i < ct->sites; i++){
+    dvec_sub(ct->site[i].com ,ct->coc, bond);
+    if (dnorm(bond) > best_active_dist){
+      best_active_dist = dnorm(bond);
+      farthest_active=i;
+    }
+  }
+  printf("farthest site is %d (res %d) dist %f\n",farthest_active,ct->site[farthest_active].resnr, best_active_dist);
+
+  
+    
+  /* substitute farthermost active with nearer inactive site */
+  if (best_active_dist < best_inactive_dist){
+    printf("Did not adapt QM zone. Is already optimal.\n");
+  }else{
+    tot_occ=0.0;
+    counter=0;
+    for (i=0; i < ct->sites; i++){
+      for (j=0; j<ct->site[i].homos; j++){
+        if(i==farthest_active){
+          tot_occ += ct->occupation[counter];
+        }
+        counter++;
+      }
+    }
+    if (tot_occ * ct->sites > 0.1){//more than 10% of the average occupation of the other sites.
+      printf("Aborted replacement of residue %d with %d because of non-neglible occupation %f.\n", ct->site[farthest_active].resnr, ct->pool_site[nearest_inactive].resnr , tot_occ);
+    }else{
+      printf("Replacing residue %d with %d. Distance to COC reduced form %fnm to %fnm.\n", ct->site[farthest_active].resnr, ct->pool_site[nearest_inactive].resnr, best_active_dist, best_inactive_dist);
+      counter=0;
+      for (i=0; i < ct->sites; i++){
+        for (j=0; j<ct->site[i].homos; j++){
+          if(i==farthest_active){
+            ct->wf[counter]=0.0; ct->wf[counter+ct->dim]=0.0;
+          }
+          counter++;
+        }
+      }
+      ct->pool_site[nearest_inactive].active=1;
+      for (i=0; i < ct->pool_size; i++){
+        if(ct->site[farthest_active].resnr == ct->pool_site[i].resnr)
+          ct->pool_site[i].active=0;
+      }
+      ct->site[farthest_active]=ct->pool_site[nearest_inactive];
+
+      /* center all atoms around COC */
+      calc_box_center(ecenterTRIC, state_box, box_center);
+      for (i = 0; i < DIM; i++)
+        dx[i] = box_center[i] - (real) ct->coc[i]/NM_TO_BOHR;
+   
+      for (i = 0; i < top_global->natoms; i++){
+        rvec_inc(gromacs_x[i], dx);
+        rvec_inc(x_ct[i], dx);
+      }
+      printf("coc is %f %f %f  nm.\n ", ct->coc[0]/NM_TO_BOHR,ct->coc[1]/NM_TO_BOHR,ct->coc[2]/NM_TO_BOHR);
+      printf("box_cneter is %f %f %f  nm.\n ", box_center[0],box_center[1], box_center[2]);
+      for (i = 0; i < DIM; i++)
+        ct->coc[i] += (double) dx[i] * NM_TO_BOHR;
+      printf("displaced all atoms by %f %f %f  nm.\n ", dx[0], dx[1], dx[2]);
+
+      /* rescale the wavefunction */
+      norm=0;
+      for (i=0; i<ct->dim; i++) 
+        norm += SQR(ct->wf[i]) + SQR(ct->wf[i+ct->dim]);
+      //printf("norm has changed to %f due to adaption of the QM zone.\n", norm);
+      for (i=0; i < 2*ct->dim; i++) 
+        ct->wf[i] /= sqrt(norm); 
+      
+      /* set the active atoms of the complex */
+      counter=0;
+      for (i=0; i<ct->sites; i++)
+      for (j=0; j<ct->site[i].atoms; j++){
+        ct->atom_cplx[counter] = ct->site[i].atom[j];
+        ct->atomtype_cplx[counter] = ct->site[i].atomtype[j];
+        counter++;
+      }
+    
+      /* set the new external charges of the complex */
+      for (i=0; i<top_global->natoms; i++ )
+        ct->extcharge_cplx[i]=i;
+      for (i=0; i<ct->sites; i++){
+        k=find_intersection(top_global->natoms, ct->extcharge_cplx, ct->site[i].extcharge, ct->extcharge_cplx); // this should successively reduce the charges in ct->extcharge_cplx. 
+        for (j=k+1; j<=top_global->natoms; j++) // k is index of highest common entry
+          ct->extcharge_cplx[j]=-1;
+      }
+      counter=0;
+      for (l=0; l<ct->extcharges_cplx; l++)
+      for (i=0; i<ct->sites; i++)
+      for (j=0; j<ct->site[i].bonds; j++)
+      for (k=0; k<ct->site[i].addchrs[j]; k++){
+        if (l == ct->site[i].extcharge[ ct->site[i].modif_extcharge[j][k] ]){ // if one of the extcharges of the complex is the same atom that was modified in the monomer calculation, then also modify it in the complex calculation.
+          ct->modif_extcharge_cplx[counter]=l;
+          counter++;
+        }
+      }
+
+      adapted=1;
+    }
+  }
+
+  printf("Active at the moment:\n");
+  for (i=0; i<ct->sites; i++){
+    printf("site %d is res %d\n", i, ct->site[i].resnr);
+  }
+
+
+  return adapted;
+}
+
 
 void check_and_invert_orbital_phase(dftb_phase1_t *dftb1, charge_transfer_t *ct)
 {
@@ -7378,7 +7297,54 @@ void print_time_difference(char *s, struct timespec start, struct timespec end)
    return;
 }
 
-void add_ct_forces(dftb_t dftb, rvec *f){
-  return;
+int find_intersection(int size, int array1[], int array2[], int intersection_array[])
+{
+    int i = 0, j = 0, k = 0;
+    while ((i < size) && (j < size)) {
+        if (array1[i] < array2[j]) {
+            i++;
+        }else if (array1[i] > array2[j]) {
+            j++;
+        }else{
+            intersection_array[k] = array1[i];
+            i++;
+            j++;
+            k++;
+        }
+    }
+    return(k);
 }
-
+int find_union(int size, int array1[], int array2[], int union_array[])
+{
+    int i = 0, j = 0, k = 0;
+    while ((i < size) && (j < size)){
+        if (array1[i] < array2[j]){
+            union_array[k] = array1[i];
+            i++;
+            k++;
+        }else if (array1[i] > array2[j]){
+            union_array[k] = array2[j];
+            j++;
+            k++;
+        }else{
+            union_array[k] = array1[i];
+            i++;
+            j++;
+            k++;
+        }
+    }
+    if (i == size) {
+        while (j < size) {
+            union_array[k] = array2[j];
+            j++;
+            k++;
+        }
+    }else{
+        while (i < size) {
+            union_array[k] = array1[i];
+            i++;
+            k++;
+        }
+    }
+    return(k);
+}

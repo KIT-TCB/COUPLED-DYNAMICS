@@ -255,7 +255,7 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
     FILE *f_tb_hamiltonian=NULL, *f_tb_hamiltonian_hub=NULL, *f_tb_hubbard=NULL, *f_tb_occupation=NULL, *f_ct_esp=NULL, *f_ct_shift=NULL, *f_ct_energy=NULL,
          *f_ct_adiabatic=NULL, *f_ct_exp_adiab=NULL, *f_ct_surfacehopping=NULL, *f_ct_nonadiab_coupling=NULL, *f_ct_state_vectors=NULL, *f_ct_orbital=NULL, *f_ct_current=NULL,
          *f_ct_project_wf=NULL,*f_ct_project_wf_ref=NULL, *f_ct_overlap_fo=NULL,*f_ct_overlap_fo_ref=NULL, *f_ct_ortho_ev=NULL, *f_ct_spec=NULL, *f_ct_spec_evec=NULL, *f_ct_fo_ref=NULL, 
-         *f_ct_tda=NULL, *f_tb_com=NULL, *f_ct_startwf=NULL; 
+         *f_ct_tda=NULL, *f_tb_wfprops=NULL, *f_ct_startwf=NULL, *f_ct_active=NULL; 
 
     double shiftE;
     int j,k,l,n;
@@ -266,19 +266,17 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
     if (DOMAINDECOMP(cr)){
       printf("CT-code has to be tested with Domain decomposition\n");
       //printf("CT-code works only with particle decomposition (mdrun -pd)\n");
-      //exit(-1);
+      exit(-1);
     }      
 #endif
     int ct_mpi_rank=0, ct_mpi_size=0, return_value;
     double ct_value, ct_energy, ct_energy1, ct_energy2, fraction_being_annihilated;
-    dvec bond;
+    dvec bond, std, msd;
     rvec *x_ct;
-    // A.HECK
     int  counter, counter2, iao, jao;
     t_atoms *ct_atoms, *ct_atoms2, ct_atoms3;
     double tda, original_delta_t;
     static struct timespec time_1, time_end;
-    // END A.HECK
     /* END TOMAS KUBAR */
 
     /* Check for special mdrun options */
@@ -775,7 +773,6 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
     snew(ct_atoms,1);
 #ifdef GMX_MPI
   if (ct_mpi_rank == 0) {
-    //*ct_atoms = gmx_mtop_global_atoms(top_global); //expands the topology. now arrays in struct t_atoms contain all atoms. in top_global they are grouped together in moltypes. only possible on rank0. relevant data has to be sent to other nodes.
       *ct_atoms = gmx_mtop_global_atoms(top_global); //expands the topology. now arrays in struct t_atoms contain all atoms. in top_global they are grouped together in moltypes. only possible on rank0. relevant data has to be sent to other nodes.
       snew(ct_atoms->pdbinfo, ct_atoms->nr); //pdb files can be handy for special output where e.g. charge is written in bfactor which can be visualized with VMD 
     if(PROTEIN){ 
@@ -848,6 +845,7 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
     init_charge_transfer(ct_atoms, top_global, mdatoms, ct, slko_path, state);
     init_dftb(mdatoms, dftb, ct, slko_path);
 #endif
+
     if (ct->jobtype == cteBORNOPPENHEIMER)
       original_delta_t = ir->delta_t;
     if (ct->qmmm == 3) /* this means PME should be used */
@@ -859,9 +857,17 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
 #ifdef GMX_MPI
     if (ct_mpi_rank == 0) {
 #endif
+
+	/* optimize QM zone before starting MD loops */
+        if(ct->opt_QMzone){
+	  ct_collect_x(cr, state_global);
+	  for (i=0; i<top_global->natoms; i++)
+	    copy_rvec(state_global->x[i], x_ct[i]);
+          search_starting_site(state->box, mdatoms, dftb, ct, x_ct, slko_path, top_global, state_global->x);
+        }
+
         if (ct->jobtype != cteESP) {
           f_tb_hamiltonian = fopen("TB_HAMILTONIAN.xvg", "w");
-//A.HECK
           f_ct_project_wf = fopen("CT_PROJECT_WF.xvg", "w");
           f_ct_project_wf_ref = fopen("CT_PROJECT_WF_REF.xvg", "w");
           f_ct_ortho_ev = fopen("CT_ORTHO_EV.xvg", "w");
@@ -874,7 +880,6 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
           if (ct->jobtype==cteTDA)
             f_ct_tda = fopen("CT_TDA.xvg", "w");
 
-//END A.HECK
         }
         if (ct->qmmm > 0) {
           f_ct_esp = fopen("CT_ESP.xvg", "w");
@@ -882,7 +887,7 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
         if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteNONSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteADNONSCC || ct->jobtype == cteSURFACEHOPPING || 
               ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==cteNEGFLORENTZ || ct->jobtype==cteNEGFLORENTZNONSCC || ct->jobtype==ctePREZHDOSFHOPPING) {
           f_tb_occupation = fopen("TB_OCCUPATION.xvg", "w");
-          f_tb_com = fopen("TB_COM.xvg", "w");
+          f_tb_wfprops = fopen("TB_WFPROPS.xvg", "w");
         }
         if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteNONSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteADNONSCC || ct->jobtype==cteNOMOVEMENT || ct->jobtype == cteSURFACEHOPPING || 
               ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING) {
@@ -928,6 +933,9 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
         }
         if (ct->jobtype==cteNEGFLORENTZ || ct->jobtype==cteNEGFLORENTZNONSCC) {
           f_ct_current = fopen("CT_CURRENT.xvg", "w");
+        }
+        if (ct->pool_size > ct->sites){
+          f_ct_active = fopen("CT_ACTIVE.xvg", "w");
         }
 #ifdef GMX_MPI
     }
@@ -1328,7 +1336,7 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
 		    if (MASTER(cr))
 		    {
 
-//do_pbc_mtop(NULL, ir->ePBC, state->box, top_global, x_ct); // make molecules whole -> no dipole , but now we no longer build pbc for every site // edit: for MD we will use site energies obtained in phase1 for CT-Hamiltonian. in phase 2 different sites have different environments (QM vs MM) and therefore enrgies (very bad!).  
+                    do_pbc_mtop(NULL, ir->ePBC, state->box, top_global, x_ct); // make molecules whole -> no dipole , but now we no longer build pbc for every site // edit: for MD we will use site energies obtained in phase1 for CT-Hamiltonian. in phase 2 different sites have different environments (QM vs MM) and therefore enrgies (very bad!). //edit2: now we need again whole molecules to calculate correct COM distance for adaptive QM zones.
 			for (i=1; i<ct_mpi_size; i++)
 			{
 			    MPI_Send(x_ct, 3 * top_global->natoms, GMX_MPI_REAL, i, 300+i, ct_mpi_comm);
@@ -1348,6 +1356,7 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
 		    //    printf("rank%d atom%d %12.7f%12.7f%12.7f\n", ct_mpi_rank, i, x_ct[i][XX]*10, x_ct[i][YY]*10, x_ct[i][ZZ]*10);
 		    //}
 	#endif
+
 
 
    printf("start prepare at %f\n", (double) clock()/CLOCKS_PER_SEC);
@@ -1384,25 +1393,6 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
 	   if (ct_mpi_rank == 0 && ct->jobtype != cteESP) 
              do_dftb_phase2(ct, dftb);
 
-/*
-printf("S^{-1/2}\n");
-for (i=0; i<ct->dim; i++){
-for (j=0; j<ct->dim; j++){
-printf("%f  ",dftb->orthogo.sij[i + j * ct->dim] );
-}
-printf("\n");
-}
-*/
-
-
-/*   
-	   if (ct_mpi_rank==0) {
-	       if (ct->jobtype==cteSCCDYNAMIC)
-		 printf("project_wf start at %f\n", (double) clock()/CLOCKS_PER_SEC);
-		 project_wf_on_new_basis(step, dftb, ct, f_ct_project_wf, f_ct_project_wf_ref);
-		 printf("project_wf stopt at %f\n", (double) clock()/CLOCKS_PER_SEC);
-	   }
-*/
 	#else
 	   if (ct->qmmm == 3) {
 	     if (step - dftb->lastlist_pme >= dftb->nstlist_pme) {
@@ -1420,6 +1410,8 @@ printf("\n");
 	     do_esp_only(ct, dftb, mdatoms->chargeA);
 	   }
 	#endif
+
+
 ///////////////////////////////////////////
 // write interesting data in pbd file as bfactor in order to combine structre and property.
 /*
@@ -1454,88 +1446,6 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
                }
              }
 */
-if(GIESEPEPTIDE){ 
-//set SHIFT     
-//*
-       ct->hamiltonian[1][1] += 0.02066804;
-       ct->hamiltonian[2][2] += 0.02066804 + 0.02241658;
-       ct->hamiltonian[3][3] += 0.02066804;
-       ct->hamiltonian[4][4] += 0.02066804+0.02241658;
-       ct->hamiltonian[5][5] += 0.02066804;
-       ct->hamiltonian[6][6] += 0.02066804+0.02241658;
-       ct->hamiltonian[7][7] += 0.036216848;
-       ct->hamiltonian[8][8] += 0.036216848+0.02241658;
-       ct->hamiltonian[9][9] -= 0.006113763;
-//*/
-/*
-//3MO
-       ct->hamiltonian[2][2] += 0.02066804;
-       ct->hamiltonian[3][3] += 0.02066804 + 0.02241658;
-       ct->hamiltonian[5][5] += 0.02066804;
-       ct->hamiltonian[6][6] += 0.02066804+0.02241658;
-       ct->hamiltonian[8][8] += 0.02066804;
-       ct->hamiltonian[9][9] += 0.02066804+0.02241658;
-       ct->hamiltonian[11][11] += 0.036216848;
-       ct->hamiltonian[12][12] += 0.036216848+0.02241658;
-       ct->hamiltonian[9][9] -= 0.006113763;
-//*/
-/* all
-       ct->hamiltonian[8][8] += 0.02066804;
-       ct->hamiltonian[9][9] += 0.02066804 + 0.02241658;
-       ct->hamiltonian[17][17] += 0.02066804;
-       ct->hamiltonian[18][18] += 0.02066804+0.02241658;
-       ct->hamiltonian[26][26] += 0.02066804;
-       ct->hamiltonian[27][27] += 0.02066804+0.02241658;
-       ct->hamiltonian[35][35] += 0.036216848;
-       ct->hamiltonian[36][36] += 0.036216848+0.02241658;
-       ct->hamiltonian[37][37] -= 0.006113763;
-    counter=1;
-    for (i=1; i<ct->sites-1; i++){
-      for (j=0; j<ct->site[i].homos; j++){
-      counter2=0;
-      for (k=j; k<ct->site[i].homos; k++){
-       ct->hamiltonian[counter][counter+counter2]= ct->hamiltonian[counter+counter2][counter]=0; //set all off diags on site to zero
-       counter2++;
-      }
-      counter++;
-      }
-    }
-//*/
-/*
-       ct->hamiltonian[1][1] += 0.02066804;
-       ct->hamiltonian[2][2] += 0.02066804;
-       ct->hamiltonian[3][3] += 0.02066804;
-       ct->hamiltonian[4][4] += 0.036216848;
-       ct->hamiltonian[5][5] -= 0.006113763;
-//*/
-//for only n_O (further shifted)
-/*
-       ct->hamiltonian[1][1] += 0.02066804+ 0.02241658;
-       ct->hamiltonian[2][2] += 0.02066804+ 0.02241658;
-       ct->hamiltonian[3][3] += 0.02066804+ 0.02241658;
-       ct->hamiltonian[4][4] += 0.036216848+ 0.02241658;
-       ct->hamiltonian[5][5] -= 0.006113763;
-/*
-       ct->hamiltonian[2][2] += 0.02241658;
-       ct->hamiltonian[4][4] += 0.02241658;
-       ct->hamiltonian[6][6] += 0.02241658;
-       ct->hamiltonian[8][8] += 0.02241658;
-*/
-/*
-       for(i=1;i<13;i++)
-         ct->hamiltonian[i][i] += 0.02066804;
-       ct->hamiltonian[1][1] += 0.02066804;
-       ct->hamiltonian[2][2] += 0.02066804;
-       ct->hamiltonian[3][3] += 0.02066804;
-       ct->hamiltonian[4][4] += 0.036216848;
-       ct->hamiltonian[5][5] -= 0.006113763;*/
-
-// for (i=0; i<ct->dim; i++) 
-// for (j=0; j<ct->dim; j++) 
- //              ct->hamiltonian[i][j] = fabs(ct->hamiltonian[i][j]);
-
-
-}
 
 
 
@@ -1688,7 +1598,7 @@ if(GIESEPEPTIDE){
        for (i=0; i<ct->dim; i++) 
          ct->survival += SQR(ct->wf[i]) + SQR(ct->wf[i+ct->dim]);
        if (ct->survival < 0.99 && ct->first_step ){ //should be normalized, 0.01 tolerance
-         printf("WARNING: no correct starting wave function was specified. Lowest eigenvalue will be taken instead.\n");
+         printf("WARNING: no correct starting wave function was specified. Lowest eigenvector will be taken instead.\n");
          f_ct_startwf = fopen ("CT_STARTWF.xvg", "w" );
          ct->fermi_kt = BOLTZMANN_HARTREE_KELVIN * 300; // T=300K helps converging 
          if(do_adiab_fermi_onestate(ct, ct_broyden, ct_broyden->df , f_ct_startwf) == 1){
@@ -1858,13 +1768,6 @@ if(GIESEPEPTIDE){
        for (i=0; i<ct->neg_imag_pot; i++)
          fprintf(f_tb_occupation, "%12.8f", ct->site_annihilated_occupation[i]);
      fprintf(f_tb_occupation, "\n");
-
-     /*print out the center of mass (in angstrom) of each site. needed for following the charge through amorphous materials*/
-     fprintf(f_tb_com, "%10d", step);
-     for (i=0; i<ct->sites; i++) 
-       fprintf(f_tb_com, "%8.2f %8.2f %8.2f   ", 10*dftb->phase1[i].com[0]/NM_TO_BOHR, 10*dftb->phase1[i].com[1]/NM_TO_BOHR, 10*dftb->phase1[i].com[2]/NM_TO_BOHR); //coordinates of COM in Angstrom
-     fprintf(f_tb_com, "\n");
-
    }
 
    /* print out the ESP */
@@ -1884,6 +1787,48 @@ if(GIESEPEPTIDE){
 //     fprintf(f_ct_shift, " %9.5f", shiftE * AU_OF_ESP_TO_VOLT);
      }
      fprintf(f_ct_esp, "\n");
+   }
+
+
+   /* print out center, standard deviation (width) and mean square displacement (needed for mobility) of the charge */
+   if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteNONSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteADNONSCC || ct->jobtype==cteSURFACEHOPPING ||
+       ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES ||
+       ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING || ct->jobtype==cteNEGFLORENTZ || ct->jobtype==cteNEGFLORENTZNONSCC || ct->jobtype==ctePREZHDOSFHOPPING) {
+      // COC: <psi|R|psi> 				= sum_i occ_i(t)*R_i(t)  // R is operator that gives COM of site i (R_i)
+      // MSD: <psi(t)|(R-R0)^2|psi(t)> 			= sum_i occ_i(t)*[R_i(t)-*R0)]^2    //R0 is position (COC) of the WF at t=0
+      // STD: sqrt(<psi|R^2|psi> - (<psi|R|psi>)^2) 		= sqrt(  sum_i [occ_i(t)*R_i^2(t)- (occ_i(t)*R_i(t))^2]  )
+     for (i=0; i<ct->dim; i++)
+       ct->occupation[i] = SQR(ct->wf[i]) + SQR(ct->wf[i+ct->dim]);
+     counter=0;
+     clear_dvec(ct->coc);
+     for (i=0; i<ct->sites; i++)
+     for (j=0; j<ct->site[i].homos; j++){
+       ct->coc[XX]+=ct->occupation[counter]*dftb->phase1[i].com[XX];
+       ct->coc[YY]+=ct->occupation[counter]*dftb->phase1[i].com[YY];
+       ct->coc[ZZ]+=ct->occupation[counter]*dftb->phase1[i].com[ZZ];
+       counter++;
+     }
+     if(ct->first_step)
+       copy_dvec(ct->coc, ct->coc_start);
+     
+     counter=0;
+     clear_dvec(std);
+     clear_dvec(msd);
+     for (i=0; i<ct->sites; i++)
+     for (j=0; j<ct->site[i].homos; j++){
+       std[XX]+=ct->occupation[counter]*SQR(dftb->phase1[i].com[XX]) - SQR(ct->occupation[counter]*dftb->phase1[i].com[XX]);
+       std[YY]+=ct->occupation[counter]*SQR(dftb->phase1[i].com[YY]) - SQR(ct->occupation[counter]*dftb->phase1[i].com[YY]);
+       std[ZZ]+=ct->occupation[counter]*SQR(dftb->phase1[i].com[ZZ]) - SQR(ct->occupation[counter]*dftb->phase1[i].com[ZZ]);
+
+       msd[XX]+=ct->occupation[counter]*SQR(dftb->phase1[i].com[XX]-ct->coc_start[XX]);
+       msd[YY]+=ct->occupation[counter]*SQR(dftb->phase1[i].com[YY]-ct->coc_start[YY]);
+       msd[ZZ]+=ct->occupation[counter]*SQR(dftb->phase1[i].com[ZZ]-ct->coc_start[ZZ]);
+       counter++;
+     }
+     for (i=0;i<3; i++ )
+       std[i]=sqrt(std[i]);
+   
+     fprintf(f_tb_wfprops, "%d  %f %f %f    %f %f %f    %f %f %f\n",step, ct->coc[XX],ct->coc[YY],ct->coc[ZZ], msd[XX],msd[YY],msd[ZZ] , std[XX],std[YY],std[ZZ]); 
    }
 
 #ifdef GMX_MPI
@@ -1954,18 +1899,26 @@ if(GIESEPEPTIDE){
       //for (m=0; m<ct->site[i].atoms; m++)
        // printf("rank%d %3d %8.5f %8.5f\n",ct_mpi_rank, ct->site[i].atom[m], ct_atoms.atom[ct->site[i].atom[m]].q, mdatoms->chargeA[ct->site[i].atom[m]]);
     }
-
-    /* achieve electroneutrality - subtract the magnitude of remaining excess charge from the last counterion,
-     *                             i.e. the last atom ever
-     * NASTY TRICK !!!
-     */
-    //if (ct->jobtype !=cteNEGFLORENTZ)
-    //  mdatoms->chargeA[mdatoms->nr - 1] = 1.0 - ct->survival;
-    // printf("Charge of atom %d set to %f !!!\n", mdatoms->nr-1, mdatoms->chargeA[mdatoms->nr - 1]);
   }
+
+
+  /* print out active QM zone and set new QM zone if charge moved to the border */
+  if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteNONSCCDYNAMIC){
+    if(ct->pool_size > ct->sites){
+      fprintf(f_ct_active, "%d  ", step);
+      for (i=0; i<ct->sites; i++){
+        fprintf(f_ct_active, " %d", ct->site[i].resnr);
+      }
+      fprintf(f_ct_active, "\n", step);
+
+      while(adapt_QMzone(ct,x_ct, mdatoms, top_global, state->box, state_global->x)){} 
+    }
+  }
+
    clock_gettime(CLOCK_MONOTONIC, &time_end);
    if (ct_mpi_rank==0)
      print_time_difference("TOTAL QM TIME[ns]:", time_1, time_end);
+  ct->first_step = 0; 
   /* END TOMAS KUBAR */
 
         /* We write a checkpoint at this MD step when:
@@ -3184,7 +3137,6 @@ if(GIESEPEPTIDE){
             bResetCountersHalfMaxH    = FALSE;
             gs.set[eglsRESETCOUNTERS] = 0;
         }
-    ct->first_step = 0; //A.HECK
     }
     /* End of main MD loop */
     debug_gmx();
