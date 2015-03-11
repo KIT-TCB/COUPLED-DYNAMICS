@@ -495,7 +495,6 @@ typedef struct {
          *occ, // MDIM
          *aux, // 3*MDIM
          **Taf,
-         **THamil,
          **OverlF,
          **THamilOrtho,
          **tij,
@@ -503,6 +502,7 @@ typedef struct {
          *pot, *pot2, *pot3, *pot4; // for PME - electric potential
   int nn, /* number of atoms */
       *ind, // nn+1
+      *atind, // index of first atom of site i
       ndim, // = ind[nn]
       *inf, // certain orbital index...
       *ihomo,  // ihomo[i] index of first homo of site i 
@@ -541,6 +541,7 @@ typedef struct {
   real ewaldcoeff_pme, rcoulomb_pme;
   int nstlist_pme, lastlist_pme;
   double ** overl_test; //just for testing stuff
+  int **nl;  //neighbor list matrix of all QM atoms (dim atoms_cplx*atoms_cplx). is there any matrix element between them?
 } dftb_t;
 
 

@@ -16,11 +16,11 @@
 
 int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
 {
-  int i, j, k, m, n, li, lj;
+  int i, j, k,l, m, n, li, lj;
   // lapack
   long ier;
 
-  int counter, counter1,counter2, ifo, iao, ii, jj, kk, ll, jfo, jao;
+  int counter, counter1,counter2, ifo, iao, ii, jj, kk, ll, jfo, jao, do_scc, has_neighbor;
 
   int nn, ne;
   dvec *x, bond;
@@ -84,6 +84,34 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
 
 */
 ///*
+
+  // get neighbor list
+  counter1=-1;
+  for (i=0; i<ct->sites; i++)
+  for (ii=0; ii<ct->site[i].atoms; ii++){
+    counter1++;
+    counter2=-1;
+    for (j=0; j<ct->sites; j++)
+    for (jj=0; jj<ct->site[j].atoms; jj++){
+      counter2++;
+      if (counter2 > counter1) {break;}
+      dvec_sub(dftb->phase1[i].x[ii],dftb->phase1[j].x[jj], bond); 
+      dist = dnorm(bond);
+      if (dist < 20.0){
+        dftb->nl[counter1][counter2]=dftb->nl[counter2][counter1]=1;
+      }else{
+        dftb->nl[counter1][counter2]=dftb->nl[counter2][counter1]=0;
+      }  
+    }
+  }
+/*
+  for (i=0; i<dftb2.nn; i++){
+  for (j=0; j<dftb2.nn; j++){
+    printf("%d ", dftb->nl[i][j]);
+    }
+  printf("\n");
+  }
+*/ 
   
   // setup of charge-independent part of H and S ("double zeta" version)
   // in this version matrix elements between atoms of the same fragment are 
@@ -98,19 +126,16 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
       if (counter2 > counter1) {break;} //matrix is symmetric. other triangular part can be derived
       if (i==j){
         slkmatrices(counter1, counter2, x, dftb2.au, dftb2.bu, dftb->lmax, dftb->dim1, dftb->dr1, dftb2.izp, dftb->skstab1, dftb->skhtab1, dftb->skself1); //use confined orbitals for AOs on the same site
-      }else{
-        dvec_sub(dftb->phase1[i].x[ii],dftb->phase1[j].x[jj], bond); 
-        dist = dnorm(bond);
-        if (dist < 20.0){   //read SLKOs only if atoms are close enough
+      }else if (dftb->nl[counter1][counter2]){
           slkmatrices(counter1, counter2, x, dftb2.au, dftb2.bu, dftb->lmax, dftb->dim2, dftb->dr2, dftb2.izp, dftb->skstab2, dftb->skhtab2, dftb->skself2);
-        }else{
-          for (n=0; n<LDIM; n++)
-          for (m=0; m<LDIM; m++) {
-            dftb2.au[m][n]=0.0;
-            dftb2.bu[m][n]=0.0;
-          }
+      }else{
+        for (n=0; n<LDIM; n++)
+        for (m=0; m<LDIM; m++) {
+          dftb2.au[m][n]=0.0;
+          dftb2.bu[m][n]=0.0;
         }
       }
+      
       for (n=0; n<dftb2.ind[counter2+1]-dftb2.ind[counter2]; n++)
         for (m=0; m<dftb2.ind[counter1+1]-dftb2.ind[counter1]; m++) {
           dftb2.hamil[dftb2.ind[counter1]+m][dftb2.ind[counter2]+n] = dftb2.au[m][n];
@@ -134,8 +159,9 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
   }
 // */
 
+
+  /* calculate atomic hamilton shift */
   printf("phase2 before pme %f\n", (double) clock()/CLOCKS_PER_SEC);
-  /* call QM/MM if desired */
   if (ct->qmmm == 3)
     do_pme_for_dftb_phase2(ct, dftb);
 
@@ -152,11 +178,25 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
       }
     }
   }
+  for (i=0; i<nn; i++)
+    dftb2.shift[i] = -dftb2.shiftE[i];
 
+
+  // add charge-dependent terms (Hubbard)
   printf("phase2 before gamma %f\n", (double) clock()/CLOCKS_PER_SEC);
-  // add charge-dependent terms (Hubbard and consec. extcharges)
-  gammamatrix(nn, x, dftb2.gammamat, dftb->uhubb2, dftb2.izp);
+  do_scc=0;
+  for (i=0; i<ct->sites; i++)
+  if(ct->site[i].do_scc)
+    do_scc=1;
+  if(do_scc){
+    gammamatrix(nn, x, dftb2.gammamat, dftb->uhubb2, dftb2.izp);
+    for (i=0; i<nn; i++) {
+      for (j=0; j<nn; j++)
+        dftb2.shift[i] += (dftb2.qmat[j] - dftb->qzero2[dftb2.izp[j]]) * (i>j ? dftb2.gammamat[i][j] : dftb2.gammamat[j][i]);
+    }
+  }
   printf("phase2 after gamma%f\n", (double) clock()/CLOCKS_PER_SEC);
+
   /*
   printf("gamma matrix: nn= %d\n",nn);
   for (i=0; i<10; i++) {
@@ -164,15 +204,6 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
     printf("\n");
   }
   // */
-  // calculate atomic hamilton shift (= sum over gamma*charge)
-  for (i=0; i<nn; i++) {
-    dftb2.shift[i] = 0.0;
-    for (j=0; j<nn; j++)
-      dftb2.shift[i] += (dftb2.qmat[j] - dftb->qzero2[dftb2.izp[j]]) * (i>j ? dftb2.gammamat[i][j] : dftb2.gammamat[j][i]);
-  }
-
-  for (i=0; i<nn; i++)
-    dftb2.shift[i] -= dftb2.shiftE[i];
 
   for (i=0; i<nn; i++)
     for (li=0; li < SQR(dftb->lmax[dftb2.izp[i]]); li++)
@@ -181,6 +212,10 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
           dftb2.hamil[dftb2.ind[i]+li][dftb2.ind[j]+lj] += 0.5 * dftb2.overl[dftb2.ind[i]+li][dftb2.ind[j]+lj] * (dftb2.shift[i] + dftb2.shift[j]);
           dftb2.hamil[dftb2.ind[j]+lj][dftb2.ind[i]+li] = dftb2.hamil[dftb2.ind[i]+li][dftb2.ind[j]+lj];
         }
+
+
+
+
 
   // calculate matrix which transforms the H-matrix from AOs to FOs:
   for (ifo=0; ifo<dftb2.norb; ifo++)
@@ -197,65 +232,51 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
         //  dftb2.Taf[dftb2.inf[ii]+i][dftb2.inf[ii]+j] = (i==j) ? 1 : 0 ; // dont transform backbone MOs for all atom calc
   }
 
+
+
   // calculate the elements "H_ij = sum_{mu nu} c_{i mu} c_{j nu} H_{mu nu}"
   printf("phase2_fast start assemble at %f\n", (double) clock()/CLOCKS_PER_SEC);
-  // ifrg = # of orbital being considered, i.e. ct->homo
-  for (i = 0; i < ct->sites; i++) {
-  for (j = i; j < ct->sites; j++) {
-      dist_best=20.0; // = 20 bohr                                                     
-    // check if sites are close enough for non-vanishing coupling //                   
-      if (i < j) {                                                                     
+  counter1=-1;
+  for (i = 0; i < ct->sites; i++) 
+  for (ii = 0; ii < ct->site[i].homos; ii++) {
+    counter1++;
+
+    has_neighbor=0;                           
+    counter2=-1;
+    for (j = 0; j < ct->sites; j++) 
+    for (jj = 0; jj < ct->site[j].homos; jj++) {
+      counter2++;
+
+      dftb2.tij[counter1][counter2]=0.0;
+      dftb2.sij[counter1][counter2]=0.0;
+
+      if (i < j) { 
+        counter=0;                                         
         for (m = 0; m < ct->site[i].atoms; m++)                                        
         for (n = 0; n < ct->site[j].atoms; n++){                                       
-          dvec_sub(dftb->phase1[i].x[m],dftb->phase1[j].x[n], bond);                   
-          dist = dnorm(bond);                                                          
-          if (dist < dist_best){ //find shortest distance                              
-            dist_best=dist;                                                            
-          }                                                                            
+          if (dftb->nl[dftb2.atind[i]+m][dftb2.atind[j]+n]){
+            has_neighbor=1;
+            break;
+          }
         }                                                                              
       }     
-
-
-
-  for (ii = 0; ii < ct->site[i].homos; ii++) {
-    ifo = ct->site[i].homo[ii] + dftb2.inf[i] - 1;
-    for (jj = 0; jj < ct->site[j].homos; jj++) {
-      jfo = ct->site[j].homo[jj] + dftb2.inf[j] - 1;
-      dftb2.THamil[ifo][jfo] = 0.0;
-      dftb2.OverlF[ifo][jfo] = 0.0;
-
-      if ((i < j && dist_best < 20.0) || i==j){ // calc hamilton only for close sites, SLKOs are tabulated up to 20 bohr // 
-          for (iao=dftb2.inf[i]; iao<dftb2.inf[i+1]; iao++)
-          for (jao=dftb2.inf[j]; jao<dftb2.inf[j+1]; jao++) {
-            dftb2.THamil[ifo][jfo] += dftb2.Taf[iao][ifo] * dftb2.hamil[iao][jao] * dftb2.Taf[jao][jfo];
-            dftb2.OverlF[ifo][jfo] += dftb2.Taf[iao][ifo] * dftb2.overl[iao][jao] * dftb2.Taf[jao][jfo];
-          }
+      if ((i < j && has_neighbor) || i==j){ // calc hamilton only for close sites, SLKOs are tabulated up to 20 bohr // 
+        ifo = ct->site[i].homo[ii] + dftb2.inf[i] - 1;
+        jfo = ct->site[j].homo[jj] + dftb2.inf[j] - 1;
+        for (iao=dftb2.inf[i]; iao<dftb2.inf[i+1]; iao++)
+        for (jao=dftb2.inf[j]; jao<dftb2.inf[j+1]; jao++) {
+          dftb2.tij[counter1][counter2] += dftb2.Taf[iao][ifo] * dftb2.hamil[iao][jao] * dftb2.Taf[jao][jfo];
+          dftb2.sij[counter1][counter2] += dftb2.Taf[iao][ifo] * dftb2.overl[iao][jao] * dftb2.Taf[jao][jfo];
+        }
       }
     }
   }
-  }
+  for (i = 0; i < ct->dim; i++) 
+  for (j = i; j < ct->dim; j++) {
+    dftb2.tij[j][i]=dftb2.tij[i][j];
+    dftb2.sij[j][i]=dftb2.sij[i][j];
   }
   printf("phase2_fast end assemble at %f\n", (double) clock()/CLOCKS_PER_SEC);
-  kk = 0;
-  for (i = 0; i < ct->sites; i++) {
-  for (ii = 0; ii < ct->site[i].homos; ii++) {
-    ifo = ct->site[i].homo[ii] + dftb2.inf[i] - 1;
-    ll = 0;
-    for (j = 0; j < ct->sites; j++) {
-    for (jj = 0; jj < ct->site[j].homos; jj++) { 
-      jfo = ct->site[j].homo[jj] + dftb2.inf[j] - 1;
-      if (ifo <= jfo) {
-        dftb2.tij[kk][ll] = dftb2.tij[ll][kk] = dftb2.THamil[ifo][jfo];
-        dftb2.sij[kk][ll] = dftb2.sij[ll][kk] = dftb2.OverlF[ifo][jfo];
-        dftb2.THamil[jfo][ifo] = dftb2.THamil[ifo][jfo];
-        dftb2.OverlF[jfo][ifo] = dftb2.OverlF[ifo][jfo];
-      }
-      ll++;
-    }
-    }
-    kk++;
-  }
-  }
 
 /* 
     // write out the obtained CG Hamiltonian
@@ -270,7 +291,7 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
       for (j=0; j<ct->dim; j++) printf("%12.6f", dftb2.sij[i][j]);
       printf("\n");
     }
-//*/
+*/
 
 ///*
 //purify S and H matrix (no longer useful with double zeta version)
@@ -303,18 +324,6 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
 // */
 
 
-/*
-  // used for projection the compressed basis, otherwise there is overlap between orbitals on the same site
-  for (j=0; j<nn; j++)
-    for (k=0; k<=j; k++) {
-      slkmatrices(j, k, x, dftb2.au, dftb2.bu, dftb->lmax, dftb->dim2, dftb->dr2, dftb2.izp, dftb->skstab1, dftb->skhtab1, dftb->skself1);
-      for (n=0; n<dftb2.ind[k+1]-dftb2.ind[k]; n++)
-        for (m=0; m<dftb2.ind[j+1]-dftb2.ind[j]; m++) {
-          dftb2.overl_c[dftb2.ind[j]+m][dftb2.ind[k]+n] = dftb2.bu[m][n];
-          dftb2.overl_c[dftb2.ind[k]+n][dftb2.ind[j]+m] = dftb2.bu[m][n];
-        }
-    }
-*/
     // orthogonalize the Hamiltonian
     ier = -512;
     ier = orthogonalize(dftb2.tij, dftb2.sij, dftb2.THamilOrtho, (long) ct->dim, dftb->orthogo);

@@ -1559,6 +1559,7 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
   snew(dftb->phase2.shift, dftb->phase2.nn);
   snew(dftb->phase2.shiftE, dftb->phase2.nn);
   snew(dftb->phase2.ind, dftb->phase2.nn + 1);
+  snew(dftb->phase2.atind, dftb->phase2.nn + 1);
   snew(dftb->phase2.inf, ct->sites + 1);
   snew(dftb->phase2.ihomo, ct->sites + 1);
   snew(dftb->phase2.izp, dftb->phase2.nn);
@@ -1574,6 +1575,7 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
     snew(dftb->phase2.Taf[0], SQR(dftb->phase2.norb));
     for(j = 1; j < dftb->phase2.norb; j++)
       dftb->phase2.Taf[j] = dftb->phase2.Taf[0] + j * dftb->phase2.norb;
+
   snew(dftb->phase2.THamil, dftb->phase2.norb);
     snew(dftb->phase2.THamil[0], SQR(dftb->phase2.norb));
     for(j = 1; j < dftb->phase2.norb; j++)
@@ -1632,6 +1634,10 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
     snew(dftb->phase2.gammamat[0], SQR(ct->atoms_cplx));
     for(j = 1; j < ct->atoms_cplx; j++)
       dftb->phase2.gammamat[j] = dftb->phase2.gammamat[0] + j * ct->atoms_cplx;
+  snew(dftb->nl, ct->atoms_cplx);
+    snew(dftb->nl[0], SQR(ct->atoms_cplx));
+    for(j = 1; j < ct->atoms_cplx; j++)
+      dftb->nl[j] = dftb->nl[0] + j * ct->atoms_cplx;
   snew(dftb->phase2.ev, dftb->phase2.norb);
   snew(dftb->phase2.occ, dftb->phase2.norb);
   snew(dftb->phase2.aux, 3 * dftb->phase2.norb);
@@ -1654,8 +1660,10 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
     }
   counter = 0;
   dftb->phase2.ind[0] = 0;
+  dftb->phase2.atind[0] = 0;
   mass = 0.0;
-  for (i=0; i<ct->sites; i++)
+  for (i=0; i<ct->sites; i++){
+    dftb->phase2.atind[i+1] = dftb->phase2.atind[i] + ct->site[i].atoms;
     for (j=0; j<ct->site[i].atoms; j++) {
       dftb->phase2.izp[counter] = dftb->phase1[i].izp[j];
       izpj = dftb->phase2.izp[counter];
@@ -1665,6 +1673,7 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
       mass += dftb->phase2.mass[counter];
       counter++;
     }
+  }
   dftb->phase2.inv_tot_mass = 1.0 / mass;
   if (counter != dftb->phase2.nn) {
     PRINTF("The number of atoms does not match: counter = %d, dftb->phase2.nn = %d !\n", counter, dftb->phase2.nn);
@@ -2592,11 +2601,12 @@ void get_MM_params(charge_transfer_t *ct, dftb_t *dftb, MPI_Comm ct_mpi_comm, in
       if(ct->do_lambda_i==2 || ct->do_lambda_i==3)
         get_internal_forces(dftb, ct, i);
     }
+  printf("MM params part 1 end   at %f\n", (double) clock()/CLOCKS_PER_SEC);
   if (ct->do_lambda_i==3){
     offdiag_gradient_homo(dftb, dftb->phase2.x, dftb->phase2.grad, ct);
     //for (i=0; i<dftb->phase2.nn; i++)
     //    printf("offdiag grad at atom i %d  QM force %lf \n", i,  -(real) HARTREE_BOHR2MD * fabs(dftb->phase2.grad[i][0])+fabs(dftb->phase2.grad[i][1])+fabs(dftb->phase2.grad[i][2]));
-    printf("offdiag forces end   at %f\n", (double) clock()/CLOCKS_PER_SEC);
+    printf("MM params part 2 end   at %f\n", (double) clock()/CLOCKS_PER_SEC);
   }
   return;
 }
@@ -6928,7 +6938,7 @@ int adapt_QMzone(charge_transfer_t *ct, rvec *x_ct , t_mdatoms *mdatoms, gmx_mto
       nearest_inactive=i;
     }
   }
-  printf("nearest site is %d (res %d) dist %f\n",nearest_inactive,ct->pool_site[nearest_inactive].resnr, best_inactive_dist);
+  //printf("nearest site is %d (res %d) dist %f\n",nearest_inactive,ct->pool_site[nearest_inactive].resnr, best_inactive_dist);
 
   /* search for farthermost active site */
   best_active_dist = 0.0;
@@ -6939,7 +6949,7 @@ int adapt_QMzone(charge_transfer_t *ct, rvec *x_ct , t_mdatoms *mdatoms, gmx_mto
       farthest_active=i;
     }
   }
-  printf("farthest site is %d (res %d) dist %f\n",farthest_active,ct->site[farthest_active].resnr, best_active_dist);
+  //printf("farthest site is %d (res %d) dist %f\n",farthest_active,ct->site[farthest_active].resnr, best_active_dist);
 
   
     
@@ -6960,7 +6970,7 @@ int adapt_QMzone(charge_transfer_t *ct, rvec *x_ct , t_mdatoms *mdatoms, gmx_mto
     if (tot_occ * ct->sites > 0.1){//more than 10% of the average occupation of the other sites.
       printf("Aborted replacement of residue %d with %d because of non-neglible occupation %f.\n", ct->site[farthest_active].resnr, ct->pool_site[nearest_inactive].resnr , tot_occ);
     }else{
-      printf("Replacing residue %d with %d. Distance to COC reduced form %fnm to %fnm.\n", ct->site[farthest_active].resnr, ct->pool_site[nearest_inactive].resnr, best_active_dist, best_inactive_dist);
+      printf("Replacing residue %d with %d. Distance to COC reduced form %fnm to %fnm.\n", ct->site[farthest_active].resnr, ct->pool_site[nearest_inactive].resnr, best_active_dist/NM_TO_BOHR, best_inactive_dist/NM_TO_BOHR);
       counter=0;
       for (i=0; i < ct->sites; i++){
         for (j=0; j<ct->site[i].homos; j++){
@@ -6986,8 +6996,8 @@ int adapt_QMzone(charge_transfer_t *ct, rvec *x_ct , t_mdatoms *mdatoms, gmx_mto
         rvec_inc(gromacs_x[i], dx);
         rvec_inc(x_ct[i], dx);
       }
-      printf("coc is %f %f %f  nm.\n ", ct->coc[0]/NM_TO_BOHR,ct->coc[1]/NM_TO_BOHR,ct->coc[2]/NM_TO_BOHR);
-      printf("box_cneter is %f %f %f  nm.\n ", box_center[0],box_center[1], box_center[2]);
+      //printf("coc is %f %f %f  nm.\n ", ct->coc[0]/NM_TO_BOHR,ct->coc[1]/NM_TO_BOHR,ct->coc[2]/NM_TO_BOHR);
+      //printf("box_cneter is %f %f %f  nm.\n ", box_center[0],box_center[1], box_center[2]);
       for (i = 0; i < DIM; i++)
         ct->coc[i] += (double) dx[i] * NM_TO_BOHR;
       printf("displaced all atoms by %f %f %f  nm.\n ", dx[0], dx[1], dx[2]);
@@ -7010,33 +7020,28 @@ int adapt_QMzone(charge_transfer_t *ct, rvec *x_ct , t_mdatoms *mdatoms, gmx_mto
       }
     
       /* set the new external charges of the complex */
-      for (i=0; i<top_global->natoms; i++ )
-        ct->extcharge_cplx[i]=i;
-      for (i=0; i<ct->sites; i++){
-        k=find_intersection(top_global->natoms, ct->extcharge_cplx, ct->site[i].extcharge, ct->extcharge_cplx); // this should successively reduce the charges in ct->extcharge_cplx. 
-        for (j=k+1; j<=top_global->natoms; j++) // k is index of highest common entry
-          ct->extcharge_cplx[j]=-1;
-      }
-      counter=0;
-      for (l=0; l<ct->extcharges_cplx; l++)
-      for (i=0; i<ct->sites; i++)
-      for (j=0; j<ct->site[i].bonds; j++)
-      for (k=0; k<ct->site[i].addchrs[j]; k++){
-        if (l == ct->site[i].extcharge[ ct->site[i].modif_extcharge[j][k] ]){ // if one of the extcharges of the complex is the same atom that was modified in the monomer calculation, then also modify it in the complex calculation.
-          ct->modif_extcharge_cplx[counter]=l;
-          counter++;
+      if(ct->qmmm>0){
+        for (i=0; i<top_global->natoms; i++ )
+          ct->extcharge_cplx[i]=i;
+        for (i=0; i<ct->sites; i++){
+          k=find_intersection(top_global->natoms, ct->extcharge_cplx, ct->site[i].extcharge, ct->extcharge_cplx); // this should successively reduce the charges in ct->extcharge_cplx. 
+          for (j=k+1; j<=top_global->natoms; j++) // k is index of highest common entry
+            ct->extcharge_cplx[j]=-1;
+        }
+        counter=0;
+        for (l=0; l<ct->extcharges_cplx; l++)
+        for (i=0; i<ct->sites; i++)
+        for (j=0; j<ct->site[i].bonds; j++)
+        for (k=0; k<ct->site[i].addchrs[j]; k++){
+          if (l == ct->site[i].extcharge[ ct->site[i].modif_extcharge[j][k] ]){ // if one of the extcharges of the complex is the same atom that was modified in the monomer calculation, then also modify it in the complex calculation.
+            ct->modif_extcharge_cplx[counter]=l;
+            counter++;
+          }
         }
       }
-
       adapted=1;
     }
   }
-
-  printf("Active at the moment:\n");
-  for (i=0; i<ct->sites; i++){
-    printf("site %d is res %d\n", i, ct->site[i].resnr);
-  }
-
 
   return adapted;
 }
