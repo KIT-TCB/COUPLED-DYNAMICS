@@ -6940,8 +6940,8 @@ printf("overlap ortho/ortho (hybrid matrix)\n");
 
   ////////////
   for(s=0;s<ct->sites;s++)
-    for(iao=dftb->phase2.inf[s];iao<dftb->phase2.inf[s+1]-dftb->phase2.inf[s];iao++)
-      for(jao=dftb->phase2.inf[s];jao<dftb->phase2.inf[s+1]-dftb->phase2.inf[s];jao++)
+    for(iao=dftb->phase2.inf[s];iao<dftb->phase2.inf[s+1];iao++)
+      for(jao=dftb->phase2.inf[s];jao<dftb->phase2.inf[s+1];jao++)
       ///////
    for(k=0;k<ct->sites;k++)
 	for(l=0;l<ct->site[k].homos;l++)
