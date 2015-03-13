@@ -6835,7 +6835,7 @@ void get_internal_forces(dftb_t *dftb, charge_transfer_t *ct, int site_i)
 
 void project_wf_on_new_basis(int step, dftb_t *dftb, charge_transfer_t *ct, FILE *f_ct_project_wf, FILE*f_ct_project_wf_ref )
 {
-  int i, ii, j, jj, k, l, m, n;
+  int i, ii, j, jj, k, l, m, n,s;
   int offset, iao, jao, ifo, jfo;
   double sum;
   double norm;
@@ -6849,8 +6849,8 @@ void project_wf_on_new_basis(int step, dftb_t *dftb, charge_transfer_t *ct, FILE
 
 
 
-  for (l=0; l<ct->dim; l++){ 
-    for (iao=0; iao < dftb->phase2.norb; iao++){
+  for (iao=0; iao < dftb->phase2.norb; iao++){   
+      for (l=0; l<ct->dim; l++){
       k=0;
       for (i=0; i < ct->sites; i++) 
 	for (ii = 0; ii < ct->site[i].homos; ii++) {
@@ -6933,10 +6933,17 @@ printf("overlap ortho/ortho (hybrid matrix)\n");
       
 
 
+  ///////////
+  //  for (iao=0; iao<dftb->phase2.norb; iao++)      //////////////////////////
+	// for (jao=0; jao<dftb->phase2.norb; jao++)    ////replace these two loops by loop over site&loop over iao in site
+      /////////////     
 
-  for (iao=0; iao<dftb->phase2.norb; iao++)
-    for (jao=0; jao<dftb->phase2.norb; jao++)
-      for(k=0;k<ct->sites;k++)
+  ////////////
+  for(s=0;s<ct->sites;s++)
+    for(iao=dftb->phase2.inf[s];iao<dftb->phase2.inf[s+1]-dftb->phase2.inf[s];iao++)
+      for(jao=dftb->phase2.inf[s];jao<dftb->phase2.inf[s+1]-dftb->phase2.inf[s];jao++)
+      ///////
+   for(k=0;k<ct->sites;k++)
 	for(l=0;l<ct->site[k].homos;l++)
 	  for(m=0;m<ct->site[k].homos;m++)
 	    {
