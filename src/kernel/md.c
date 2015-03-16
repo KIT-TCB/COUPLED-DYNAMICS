@@ -1390,9 +1390,12 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
            }
            MPI_Barrier(ct_mpi_comm); //wait until broadcasting has finished
 
-	   if (ct_mpi_rank == 0 && ct->jobtype != cteESP) 
-             do_dftb_phase2(ct, dftb);
 
+
+	   if (ct_mpi_rank == 0 && ct->jobtype != cteESP){
+             check_and_invert_orbital_phase(dftb->phase1, ct); //calc sign on master since we need later also the obtained overlap in project_wf_on_new_basis().
+             do_dftb_phase2(ct, dftb);
+           }
 	#else
 	   if (ct->qmmm == 3) {
 	     if (step - dftb->lastlist_pme >= dftb->nstlist_pme) {
@@ -1616,13 +1619,12 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
        /* SCC dynamics -- perform the integration with RKsuite
         * (the neg-imag-potential capability is included in do_rksuite() )
         */
-     
-      if (ct->dim > ct->sites){
+
+       if(ct->dim > ct->sites){     //if there are degenerated orbitals 
          printf("start project at %f\n", (double) clock()/CLOCKS_PER_SEC);
          project_wf_on_new_basis(step, dftb, ct, f_ct_project_wf, f_ct_project_wf_ref );
          printf("stop project at %f\n", (double) clock()/CLOCKS_PER_SEC);
        }
-
 
        do_rksuite(ct);
        /* the coefficients of decomposition into adiabatic states */
@@ -1909,7 +1911,7 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
       for (i=0; i<ct->sites; i++){
         fprintf(f_ct_active, " %d", ct->site[i].resnr);
       }
-      fprintf(f_ct_active, "\n", step);
+      fprintf(f_ct_active, "\n");
 
       while(adapt_QMzone(ct,x_ct, mdatoms, top_global, state->box, state_global->x)){} 
     }

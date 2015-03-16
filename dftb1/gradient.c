@@ -96,24 +96,13 @@ void offdiag_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t 
         dftb2.b[m][n] = 0.e0;
 
   // the matrix b is correct here! //
-  j=-1;
-  for (site_i=0; site_i<ct->sites; site_i++)
-  for (u=0; u<ct->site[site_i].atoms; u++){ //split sum over j and k into fragments to check if j is in same frag as k
-  //for (j=0; j<dftb2.nn; j++) { // for every atom that forces act upon 
-    j++;
-    indj = dftb2.ind[j];
-    izpj = dftb2.izp[j];
-    k=-1;
-    for (site_j=0; site_j<ct->sites; site_j++) 
-    for (v=0; v<ct->site[site_i].atoms; v++){
-    //for (k=0; k<dftb2.nn; k++) if (k != j) { // for every atom acting on the studied atom j 
-      k++;  
-      indk = dftb2.ind[k];
-      izpk = dftb2.izp[k];
-      if (site_i != site_j){ // first check if atoms are further apart than length of SLKO
-        dvec_sub(dftb->phase2.x[j],dftb->phase2.x[k], bond);
-        dist = dnorm(bond);
-        if (dist < 20.0) 
+  for (j=0; j<dftb2.nn; j++) { // for every atom that forces act upon 
+    for (k=0; k<dftb2.nn; k++) { // for every atom acting on the studied atom j 
+      if (k != j && dftb->nl[j][k]) { // no force on self and check if k is neighbor of j
+        indj = dftb2.ind[j];
+        izpj = dftb2.izp[j];
+        indk = dftb2.ind[k];
+        izpk = dftb2.izp[k];
         for (i=0; i<3; i++) { // XX, YY and ZZ 
           // derivative of the slko matrices 
           xhelp = dftb2.x[j][i];
@@ -130,8 +119,6 @@ void offdiag_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t 
             slkmatrices(k, j, dftb2.x, dftb2.auh, dftb2.buh, dftb->lmax, dftb->dim2, dftb->dr2, dftb2.izp, dftb->skstab2, dftb->skhtab2, dftb->skself2);
             x[j][i] = xhelp;
           }
-
-	      
 
           // use summation over angular momentum and magnetic quantum numbers
           // because shift is actually defined for the orbitals 

@@ -1,6 +1,6 @@
 #CXX= g++
 #CXX=icpc
-CXXOPTS= -O2 -Wall -pedantic -g
+CXXOPTS= -O2 -Wall -pedantic -g -I../include -I../dftb1
 OBJ= do_rksuite.o rksuite.o
 
 librksuite: $(OBJ)
