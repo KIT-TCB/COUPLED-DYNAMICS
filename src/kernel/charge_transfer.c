@@ -1707,6 +1707,7 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
       ct->align.U[j]=ct->align.U[0] + j * ct->dim;
 
   /* arrays for state following */
+  /*
   snew(dftb->orthogo.evec_ao, dftb->phase2.norb);
     snew(dftb->orthogo.evec_ao[0], dftb->phase2.norb * ct->dim);
     for(j = 1; j < dftb->phase2.norb; j++)
@@ -1719,7 +1720,7 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
     snew(dftb->orthogo.evec_ao_ref[0], dftb->phase2.norb * ct->dim);
     for(j = 1; j < dftb->phase2.norb; j++)
       dftb->orthogo.evec_ao_ref[j] = dftb->orthogo.evec_ao_ref[0] + j * ct->dim;
-
+ */
   snew(dftb->orthogo.overlap, ct->dim);
     snew(dftb->orthogo.overlap[0], SQR(ct->dim));
     for(j = 1; j < ct->dim; j++)
@@ -6727,16 +6728,18 @@ void project_wf_on_new_basis(int step, dftb_t *dftb, charge_transfer_t *ct, FILE
 
   // overlap with reference wf in t=0  
   for(k=0;k<ct->sites;k++)
-    for (iao=0; iao<dftb->phase1[k].norb; iao++)
-      for (jao=0; jao<dftb->phase1[k].norb; jao++)
-        for(l=0;l<ct->site[k].homos;l++)
-          for(m=0;m<ct->site[k].homos;m++){
-              i=dftb->phase2.ihomo[k]+l;
-              j=dftb->phase2.ihomo[k]+m;
-              ifo=ct->site[k].homo[l]-1;
-              jfo=ct->site[k].homo[m]-1;
-              dftb->orthogo.overlap[i][j] += dftb->phase1[k].a[iao][ifo] * dftb->phase1[k].overl[iao][jao] * dftb->phase1[k].a_ref[jao][jfo];
-          }
+    for(l=0;l<ct->site[k].homos;l++)
+    for(m=0;m<ct->site[k].homos;m++){
+      i=dftb->phase2.ihomo[k]+l;
+      j=dftb->phase2.ihomo[k]+m;
+      dftb->orthogo.overlap_ref[i][j]=0.0;
+      for (iao=0; iao<dftb->phase1[k].norb; iao++)
+      for (jao=0; jao<dftb->phase1[k].norb; jao++){
+        ifo=ct->site[k].homo[l]-1;
+        jfo=ct->site[k].homo[m]-1;
+        dftb->orthogo.overlap_ref[i][j] += dftb->phase1[k].a[iao][ifo] * dftb->phase1[k].overl[iao][jao] * dftb->phase1[k].a_ref[jao][jfo];
+      }
+    }
 
 
   // calculate overlap with last step //
@@ -7051,8 +7054,10 @@ int adapt_QMzone(charge_transfer_t *ct, rvec *x_ct , t_mdatoms *mdatoms, gmx_mto
       }
       //printf("coc is %f %f %f  nm.\n ", ct->coc[0]/NM_TO_BOHR,ct->coc[1]/NM_TO_BOHR,ct->coc[2]/NM_TO_BOHR);
       //printf("box_cneter is %f %f %f  nm.\n ", box_center[0],box_center[1], box_center[2]);
-      for (i = 0; i < DIM; i++)
+      for (i = 0; i < DIM; i++){
         ct->coc[i] += (double) dx[i] * NM_TO_BOHR;
+        ct->coc_start[i] += (double) dx[i] * NM_TO_BOHR;
+      }
       printf("displaced all atoms by %f %f %f  nm.\n ", dx[0], dx[1], dx[2]);
 
       /* rescale the wavefunction */
