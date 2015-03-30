@@ -616,8 +616,10 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     snew(ct->pool_site[i].lambda_i, ct->sitetype[ct->pool_site[i].type].homos);
      
     l = ct->pool_site[i].resnr; // resnr is parked in l. otherwise the resnr would get lost by copying sitetype to site.
+    m = ct->pool_site[i].do_scc; // do_SCC is parked in m. otherwise the resnr would get lost by copying sitetype to site.
     ct->pool_site[i]= ct->sitetype[ct->pool_site[i].type]; //not sure if copying is that easy  
     ct->pool_site[i].resnr = l;
+    ct->pool_site[i].do_scc = m;
     
     /* stuff that is unique for each site */
     snew(ct->pool_site[i].delta_q, ct->sitetype[ct->pool_site[i].type].homos);  
