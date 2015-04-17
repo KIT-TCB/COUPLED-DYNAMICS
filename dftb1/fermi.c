@@ -33,7 +33,7 @@ void fermi(int ndim, double *ev, double *occ, double *efermi, int nelectrons)
     nef2 = (int) (nel+2)/2;
   }
 
-  *efermi = 0.5 * (ev[nef1]  + ev[nef2]);
+  *efermi = 0.5 * (ev[nef1-1]  + ev[nef2-1]);
   nup = ndown = nef1;
 
   for ( ; nup < ndim; nup++)

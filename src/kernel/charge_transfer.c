@@ -1108,16 +1108,17 @@ printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, site->connections);
     /* and determine which should be modified */
     for (i=0; i<top_global->natoms; i++ )
       ct->extcharge_cplx[i]=i;
-    for (i=0; i<ct->sites; i++) 
+    for (i=0; i<ct->sites; i++){
       k=find_intersection(top_global->natoms, ct->extcharge_cplx, ct->site[i].extcharge, ct->extcharge_cplx); // this should successively reduce the charges in ct->extcharge_cplx
-      for (j=0;j<k; j++)
-        ct->extcharge_cplx[i]=-1;     
+      for (j=k; j<top_global->natoms; j++) // k elements are common in both arrays
+        ct->extcharge_cplx[j]=-1;
+    }
     counter=0;
     for (l=0; l<ct->extcharges_cplx; l++)
     for (i=0; i<ct->sites; i++)
     for (j=0; j<ct->site[i].bonds; j++)
     for (k=0; k<ct->site[i].addchrs[j]; k++)
-    if (ct->extcharge_cplx[counter] == ct->site[i].extcharge[ ct->site[i].modif_extcharge[j][k] ]){ // if one of the extcharges of the complex is the same atom that was modified in the monomer calculation, then also modify it in the complex calculation.
+    if (ct->extcharge_cplx[l] == ct->site[i].extcharge[ ct->site[i].modif_extcharge[j][k] ]){ // if one of the extcharges of the complex is the same atom that was modified in the monomer calculation, then also modify it in the complex calculation.
       ct->modif_extcharge_cplx[counter]=l;
       counter++;
     }
@@ -1129,8 +1130,9 @@ printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, site->connections);
       ct->site[i].extcharges = counter_array[i];
       for(j = 0; j < ct->site[i].bonds; j++){
         for(k = 0; k < ct->site[i].addchrs[j]; k++) {
-          if (ct->site[i].modif_extcharge[j][k] > -1) PRINTF("          modified extcharge for bond no. %5d: atom %5d - %s (residue %d)\n", j+1 , ct->site[i].modif_extcharge[j][k], 
-            *(atoms->atomname[ct->site[i].modif_extcharge[j][k]]), atoms->resinfo[atoms->atom[ct->site[i].modif_extcharge[j][k]].resind].nr+1 );
+          if (ct->site[i].modif_extcharge[j][k] > -1)
+            PRINTF("          modified extcharge for bond no. %5d: atom %5d - %s (residue %d)\n", j+1 , ct->site[i].extcharge[ct->site[i].modif_extcharge[j][k]]+1,
+            *(atoms->atomname[ct->site[i].extcharge[ct->site[i].modif_extcharge[j][k]]]), atoms->resinfo[atoms->atom[ct->site[i].extcharge[ct->site[i].modif_extcharge[j][k]]].resind].nr+1 );
         }
       }
     }
@@ -1141,8 +1143,8 @@ printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, site->connections);
     //  exit(-1);
     //}
     for (j=0; j<counter_modif_cplx; j++) {
-      PRINTF("          modified extcharge no. %5d: atom %5d - %s (residue %d)\n", j+1, ct->modif_extcharge_cplx[j], 
-        *(atoms->atomname[ct->modif_extcharge_cplx[j]]), atoms->resinfo[atoms->atom[ct->modif_extcharge_cplx[j]].resind].nr+1);
+      PRINTF("          modified extcharge no. %5d: atom %5d - %s (residue %d)\n", j+1, ct->extcharge_cplx[ct->modif_extcharge_cplx[j]]+1,
+        *(atoms->atomname[ct->extcharge_cplx[ct->modif_extcharge_cplx[j]]]), atoms->resinfo[atoms->atom[ct->extcharge_cplx[ct->modif_extcharge_cplx[j]]].resind].nr+1);
     }
 
   }//end QMMM>0
@@ -7093,7 +7095,7 @@ int adapt_QMzone(charge_transfer_t *ct, rvec *x_ct , t_mdatoms *mdatoms, gmx_mto
         for (i=0; i<ct->sites; i++)
         for (j=0; j<ct->site[i].bonds; j++)
         for (k=0; k<ct->site[i].addchrs[j]; k++){
-          if (l == ct->site[i].extcharge[ ct->site[i].modif_extcharge[j][k] ]){ // if one of the extcharges of the complex is the same atom that was modified in the monomer calculation, then also modify it in the complex calculation.
+          if (ct->extcharge_cplx[l] == ct->site[i].extcharge[ ct->site[i].modif_extcharge[j][k] ]){ // if one of the extcharges of the complex is the same atom that was modified in the monomer calculation, then also modify it in the complex calculation.
             ct->modif_extcharge_cplx[counter]=l;
             counter++;
           }
