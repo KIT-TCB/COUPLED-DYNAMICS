@@ -1351,6 +1351,10 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
   double espin, qzeroh[3], uhubbh[3], mass;
   FILE *f;
 
+  char *line=NULL;
+  char * pch;
+  size_t len;
+
 #ifdef GMX_MPI
   printf("DFTB initialization at rank %d\n", ct_mpi_rank);
 #else
@@ -1411,7 +1415,15 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
         PRINTF("Cannot open the parameter file %s, exiting!\n", filename);
 	exit(-1);
       }
-      fscanf(f, "%lf %d", &(dftb->dr2[i][j]), &(dftb->dim2[i][j]));
+
+      //in converntional SLKOs there are 3 entries for i=j, in our CT-SLKO lmax is missing. In order to be able to use both formats in phase2, fscan was replaced by getline 
+      //fscanf(f, "%lf %d", &(dftb->dr2[i][j]), &(dftb->dim2[i][j]));
+      getline(&line, &len, f);
+      pch = strtok (line," ");
+      dftb->dr2[i][j] = atof(pch);
+      pch = strtok (NULL," ");
+      dftb->dim2[i][j]= atoi(pch);
+
       //printf("%lf %d\n", dftb->dr2[i][j], dftb->dim2[i][j]);
       if (i == j) {
         fscanf(f, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",

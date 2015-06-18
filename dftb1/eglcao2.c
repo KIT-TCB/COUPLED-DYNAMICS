@@ -236,31 +236,27 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
 
   // calculate the elements "H_ij = sum_{mu nu} c_{i mu} c_{j nu} H_{mu nu}"
   printf("phase2_fast start assemble at %f\n", (double) clock()/CLOCKS_PER_SEC);
-  counter1=-1;
-  for (i = 0; i < ct->sites; i++) 
-  for (ii = 0; ii < ct->site[i].homos; ii++) {
-    counter1++;
-
+  for (i = 0; i < ct->sites; i++){
+  for (j = i; j < ct->sites; j++){ 
     has_neighbor=0;                           
-    counter2=-1;
-    for (j = 0; j < ct->sites; j++) 
+
+    for (m = 0; m < ct->site[i].atoms; m++)                                        
+    for (n = 0; n < ct->site[j].atoms; n++){                                       
+      if (dftb->nl[dftb2.atind[i]+m][dftb2.atind[j]+n]){
+        has_neighbor=1;
+        break;
+      }
+    } 
+                                                                             
+    for (ii = 0; ii < ct->site[i].homos; ii++) {
+      counter1=ct->indFO[i]+ii;
     for (jj = 0; jj < ct->site[j].homos; jj++) {
-      counter2++;
+      counter2=ct->indFO[j]+jj;
 
       dftb2.tij[counter1][counter2]=0.0;
       dftb2.sij[counter1][counter2]=0.0;
 
-      if (i < j) { 
-        counter=0;                                         
-        for (m = 0; m < ct->site[i].atoms; m++)                                        
-        for (n = 0; n < ct->site[j].atoms; n++){                                       
-          if (dftb->nl[dftb2.atind[i]+m][dftb2.atind[j]+n]){
-            has_neighbor=1;
-            break;
-          }
-        }                                                                              
-      }     
-      if ((i < j && has_neighbor) || i==j){ // calc hamilton only for close sites, SLKOs are tabulated up to 20 bohr // 
+      if ( has_neighbor || i==j){ // calc hamilton only for close sites, SLKOs are tabulated up to 20 bohr // 
         ifo = ct->site[i].homo[ii] + dftb2.inf[i] - 1;
         jfo = ct->site[j].homo[jj] + dftb2.inf[j] - 1;
         for (iao=dftb2.inf[i]; iao<dftb2.inf[i+1]; iao++)
@@ -270,6 +266,8 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
         }
       }
     }
+    }
+  }
   }
   for (i = 0; i < ct->dim; i++) 
   for (j = i; j < ct->dim; j++) {
@@ -291,7 +289,7 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
       for (j=0; j<ct->dim; j++) printf("%12.6f", dftb2.sij[i][j]);
       printf("\n");
     }
-*/
+//*/
 
 ///*
 //purify S and H matrix (no longer useful with double zeta version)

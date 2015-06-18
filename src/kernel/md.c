@@ -1406,7 +1406,7 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
 	   }
 	   if (ct->jobtype != cteESP) {
 	     do_dftb_phase1(ct, dftb);
-	     // check_and_invert_orbital_phase(dftb->phase1, ct->sites, ct->homo, f_ct_orbital, step); absorbed in sort_mobasis
+	      check_and_invert_orbital_phase(dftb->phase1, ct);
 	     /* copying of charges and PME for 2nd phase comes here !!! */
 	     do_dftb_phase2(ct, dftb);
 	   } else {
