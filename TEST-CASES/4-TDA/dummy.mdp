@@ -1,0 +1,11 @@
+
+integrator          =  md
+dt                  =  0.001
+nsteps              =  0
+pbc                 =  no
+ns_type             =  grid                     ; pairlist method
+coulombtype         =  Cut-off
+vdwtype             =  Cut-off
+rlist               =  0.00             ; cut-off for ns
+rvdw                =  0.00             ; cut-off for vdw
+rcoulomb            =  0.00

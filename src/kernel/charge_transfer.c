@@ -2619,7 +2619,7 @@ void get_MM_params(charge_transfer_t *ct, dftb_t *dftb, MPI_Comm ct_mpi_comm, in
         get_internal_forces(dftb, ct, i);
     }
   printf("MM params part 1 end   at %f\n", (double) clock()/CLOCKS_PER_SEC);
-  if (ct->do_lambda_i==3){
+  if (ct->do_lambda_i==3 && ct_mpi_rank == 0){
     offdiag_gradient_homo(dftb, dftb->phase2.x, dftb->phase2.grad, ct);
     //for (i=0; i<dftb->phase2.nn; i++)
     //    printf("offdiag grad at atom i %d  QM force %lf \n", i,  -(real) HARTREE_BOHR2MD * fabs(dftb->phase2.grad[i][0])+fabs(dftb->phase2.grad[i][1])+fabs(dftb->phase2.grad[i][2]));
@@ -2675,6 +2675,7 @@ void do_dftb_phase1(charge_transfer_t *ct, dftb_t *dftb)
 }
 void get_MM_params(charge_transfer_t *ct, dftb_t *dftb)
 {
+  int i;
   for (i=0; i<ct->sites; i++){
     get_delta_q(dftb, ct, i);
     if(ct->do_lambda_i==2 || ct->do_lambda_i==3)
@@ -2841,125 +2842,177 @@ printf("final name %s %d\n",*(atoms->atomname[j]), atoms->atom[j].resind);
   return atoms;
 }
 
+// lapack routines
+static long dsyev(int int_n, double *a, double *w, double *work, int int_lwork)
+{
+  extern void dsyev_(char *, char *, long *, double *, long *, double *, double *, long *, long *);
+  long info, n, lwork;
+  char jobz='V', uplo='U';
+  n = (long) int_n;
+  lwork = (long) int_lwork;
+
+  dsyev_(&jobz, &uplo, &n, a, &n, w, work, &lwork, &info);
+  if ((int) info) {
+    printf("\nDSYEV: ier = %d\nEXITING!\n\n", (int) info);
+    exit(-1);
+  }
+
+  return info;
+}
+static long dgesv(int int_n, double *a, double *b, long ipiv[DIIS_MAX_PREV_VECTORS + 1])
+{
+  extern void dgesv_(long *, long *, double *, long *, long *, double *, long *, long *);
+  long n, nrhs, lda, ldb, info;
+  n = lda = ldb = (long) int_n;
+  nrhs = 1L;
+
+  dgesv_(&n, &nrhs, a, &lda, ipiv, b, &ldb, &info);
+
+  return info;
+}
+
+
 double calc_tda(charge_transfer_t *ct)
 {
-extern void dpotrf_(char *, long *, double *, long *, long *);
-extern void dpotri_(char *, long *, double *, long *, long *);
-extern void dgetrf_(long *,long *, double *, long *, long *, long *);
-extern void dgetri_(long *, double *, long *, long *, double *, long *, long *);
-long i,j,nb,info,lwork=1000, ipiv[1000];
-char itype='U';
-double etun,ed,ea,tda;
-double vdb[1000],vba[1000],temp[1000]; //should be allocatable, no. of bridge MOs
-double gb[1000*1000], work[1000];
+  extern void dpotrf_(char *, long *, double *, long *, long *);
+  extern void dpotri_(char *, long *, double *, long *, long *);
+  extern void dgetrf_(long *,long *, double *, long *, long *, long *);
+  extern void dgetri_(long *, double *, long *, long *, double *, long *, long *);
+  long nb,info,lwork=1000, ipiv[1000];
+  int i,j;
+  char itype='U';
+  double etun,etun_old,tda;
+  double vdb[1000],vba[1000],temp[1000]; //should be allocatable, no. of bridge MOs
+  double gb[1000*1000], work[1000];
+  double ev_Heff[2], Heff[4]; //2x2
+  int niter, maxiter=30;
+  
+  double Etol = 1.e-7;
+  
+  printf("Performing TDA Calculation\n");
+  
+  // defining number of bridge units.
+  // these are all orbitals besides donor and acceptor HOMO (multiple FOs on bridge molecules possible)
+  nb= (long) ct->dim-2;   
+  
+  
+  // define tunneling energy
+  etun = 0.5 * (ct->hamiltonian[0][0] + ct->hamiltonian[ct->dim-1][ct->dim-1]);
+  
+  // define donor-bridge coupling
+  // define bridge-acceptor coupling
+  for(i=0;i<nb;i++){
+          vdb[i] = ct->hamiltonian[0][i+1];
+          vba[i] = ct->hamiltonian[ct->dim-1][i+1];
+  }
+  
+  
+  //start self consistent tuning of Etun
+  for (niter=0; niter<maxiter; niter++) {
 
-printf("Performing TDA Calculation\n");
+    // build bridge green function
+    for (i=0;i<nb;i++){
+    for (j=0;j<nb;j++){
+    if (i==j) {
+            gb[i+j*nb] = etun - ct->hamiltonian[i+1][j+1];
+    }else{
+            gb[i+j*nb] = -1.0 * ct->hamiltonian[i+1][j+1];
+    }
+    }
+    }
+    
+    // output
+    /*
+    for (i=0; i< ct->dim; i++){
+    for (j=0; j< ct->dim; j++)
+        printf("%lf ", ct->hamiltonian[i][j]*HARTREE_TO_EV);
+      printf("\n");
+    } 
+    printf("Etun %lf\n", etun*HARTREE_TO_EV);
+    for (i=0; i< nb; i++){
+    printf("Vba %lf\n", vba[i]*HARTREE_TO_EV);
+    printf("Vdb %lf\n", vdb[i]*HARTREE_TO_EV);
+    }
+    
+    printf("Gb^-1[eV] =\n");
+    for(i=0;i<nb;i++){
+      for(j=0;j<nb;j++)
+        printf("%lf ", gb[i+j*nb]*HARTREE_TO_EV);
+      printf("\n");
+    }
+    //*/
+  
+  
+    /*
+     // inversion of positive definite matrix
+     dpotrf_(&itype,&nb,gb,&nb,&info);
+     if(info!=0){
+       printf("ERROR in calc_tda (factorization)\n");
+       exit(-1);
+     }
+     dpotri_(&itype,&nb,gb,&nb,&info);
+     if(info!=0){
+       printf("ERROR in calc_tda (inversion)\n");
+       exit(-1);
+     }
+  //  */
+  ///*
+     //alternative: inversion of general matrix. however, indefinite or positive definite matrix indicates that bridge levels are not correct (compared to D/A)
+     dgetrf_(&nb,&nb,gb,&nb,ipiv, &info);
+     if((int) info != 0){
+       printf("ERROR in calc_tda (dgetrf) info:%d \n", (int) info);
+       exit(-1);
+     }
+     dgetri_(&nb,gb,&nb,ipiv,work,&lwork, &info);
+     if((int) info != 0){
+       printf("ERROR in calc_tda (dgetri) info:%d\n",(int) info);
+       exit(-1);
+     }
+  //*/  
+    /*
+    printf("Gb[eV^-1] =\n");
+    for(i=0;i<nb;i++){
+      for(j=0;j<nb;j++)
+        printf("%lf ", gb[i+j*nb]/HARTREE_TO_EV);
+      printf("\n");
+    }
+    */
+    
+    // construct effective two state hamiltonian
+    tda=0.0;
+    Heff[0]=ct->hamiltonian[0][0];
+    Heff[1+2]=ct->hamiltonian[ct->dim-1][ct->dim-1];
+    Heff[1]=ct->hamiltonian[0][ct->dim-1];
+    Heff[1+1]=ct->hamiltonian[ct->dim-1][0];
+    for(i=0;i<nb;i++)
+    for(j=0;j<nb;j++){
+      Heff[0] += vdb[i]*gb[i+j*nb]*vdb[j];
+      Heff[1+2] += vba[i]*gb[i+j*nb]*vba[j];
+      tda += vdb[i]*gb[i+j*nb]*vba[j];
+    }
+    Heff[1]+=tda;
+    Heff[1+1]+=tda;
+  
+    // diagonalize effective Hamiltonian
+    dsyev(2, Heff, ev_Heff, work, 3*2);
+    
+    // get new tunneling energy
+    etun=0.5 * (ev_Heff[0]+ev_Heff[1]);
+  
+  
+    printf("niter %d: Direct coupling (HDA)[eV] = %f   Bridge-mediated coupling (TDA)[eV] = %f   Etun[eV] = %f \n",
+            niter, ct->hamiltonian[0][ct->dim-1]*HARTREE_TO_EV, tda*HARTREE_TO_EV, etun*HARTREE_TO_EV);
 
-// defining number of bridge units.
-// these are all orbitals besides donor and acceptor HOMO (multiple FOs on bridge molecules possible)
-nb= (long) ct->dim-2;   
-
-
-// define tunneling energy
-ed=ct->hamiltonian[0][0];
-ea=ct->hamiltonian[ct->dim-1][ct->dim-1];
-etun = 0.5 * (ea + ed);
-
-
-// define donor-bridge coupling
-// define bridge-acceptor coupling
-for(i=0;i<nb;i++){
-        vdb[i] = ct->hamiltonian[0][i+1];
-        vba[i] = ct->hamiltonian[ct->dim-1][i+1];
-}
-
-// build bridge green function
-for (i=0;i<nb;i++){
-for (j=0;j<nb;j++){
-if (i==j) {
-        gb[i+j*nb] = etun - ct->hamiltonian[i+1][j+1];
- /*
-  if (i%2 == 0){
-        //gb[i+j*nb] = etun - (ct->hamiltonian[i+1][j+1] - 1.1708/HARTREE_TO_EV); //formaldehyde shifted by 1.1708 eV to fit SAOP levels
-        //gb[i+j*nb] = etun - (ct->hamiltonian[i+1][j+1] - 1.9910/HARTREE_TO_EV); //FH-formaldehyde shifted by 1.1708 eV to fit SAOP levels
-        gb[i+j*nb] = etun - (ct->hamiltonian[i+1][j+1] - 2.3539/HARTREE_TO_EV); //F2-formaldehyde shifted by 1.1708 eV to fit SAOP levels
-  }else{
-        //gb[i+j*nb] = etun - (ct->hamiltonian[i+1][j+1] - 1.1112/HARTREE_TO_EV); //sigma shift
-        //gb[i+j*nb] = etun - (ct->hamiltonian[i+1][j+1] - 2.1003/HARTREE_TO_EV); //sigma shift
-        gb[i+j*nb] = etun - (ct->hamiltonian[i+1][j+1] - 2.3389/HARTREE_TO_EV); //sigma shift
-  }*/
-}else{
-        gb[i+j*nb] = -1.0 * ct->hamiltonian[i+1][j+1];
-}
-}
-}
-
-// output
-///*
-for (i=0; i< ct->dim; i++){
-for (j=0; j< ct->dim; j++)
-    printf("%lf ", ct->hamiltonian[i][j]*HARTREE_TO_EV);
-  printf("\n");
-} 
-printf("Etun %lf\n", etun*HARTREE_TO_EV);
-for (i=0; i< nb; i++){
-printf("Vba %lf\n", vba[i]*HARTREE_TO_EV);
-printf("Vdb %lf\n", vdb[i]*HARTREE_TO_EV);
-}
-
-printf("Gb^-1=\n");
-for(i=0;i<nb;i++){
-  for(j=0;j<nb;j++)
-    printf("%lf ", gb[i+j*nb]*HARTREE_TO_EV);
-  printf("\n");
-}
-//*/
-/*
- // inversion of positive definite matrix
- dpotrf_(&itype,&nb,gb,&nb,&info);
- if(info!=0){
-   printf("ERROR in calc_tda (factorization)\n");
-   exit(-1);
- }
- dpotri_(&itype,&nb,gb,&nb,&info);
- if(info!=0){
-   printf("ERROR in calc_tda (inversion)\n");
-   exit(-1);
- }
-*/
- //alternative: inversion of general matrix. however, indefinite or positive definite matrix indicates that bridge levels are not correct (compared to D/A)
- dgetrf_(&nb,&nb,gb,&nb,ipiv, &info);
- if(info!=0){
-   printf("ERROR in calc_tda (factorization)\n");
-   exit(-1);
- }
- dgetri_(&nb,gb,&nb,ipiv,work,&lwork, &info);
- if(info!=0){
-   printf("ERROR in calc_tda (factorization)\n");
-   exit(-1);
- }
-
-
-
-///*
-printf("Gb=\n");
-for(i=0;i<nb;i++){
-  for(j=0;j<nb;j++)
-    printf("%lf ", gb[i+j*nb]*HARTREE_TO_EV);
-  printf("\n");
-}
-//*/
-
-// calc T_DA
-tda=0.0;
-for(i=0;i<nb;i++)
-for(j=0;j<nb;j++)
-  tda += vdb[i]*gb[i+j*nb]*vba[j];
-
-tda = fabs(tda);
-printf("TDA[eV] = %lf \n", tda*HARTREE_TO_EV);
-
-return tda;
+    if (fabs(etun-etun_old) < Etol) {
+      printf("TDA calculation converged after %d iterations. \n", niter);
+      break;
+    }else if (niter == maxiter-1)
+      printf("TDA calculation did not converge after %d iterations. \n", niter);
+  
+    etun_old=etun;
+  } // end tuning Etun
+  
+  return tda;
 }
 
 
@@ -3017,35 +3070,6 @@ void ct_integrate_tdse(charge_transfer_t *ct, double twant)
 }
 */
 
-// lapack routines
-static long dsyev(int int_n, double *a, double *w, double *work, int int_lwork)
-{
-  extern void dsyev_(char *, char *, long *, double *, long *, double *, double *, long *, long *);
-  long info, n, lwork;
-  char jobz='V', uplo='U';
-  n = (long) int_n;
-  lwork = (long) int_lwork;
-
-  dsyev_(&jobz, &uplo, &n, a, &n, w, work, &lwork, &info);
-  if ((int) info) {
-    printf("\nDSYEV: ier = %d\nEXITING!\n\n", (int) info);
-    exit(-1);
-  }
-
-  return info;
-}
-
-static long dgesv(int int_n, double *a, double *b, long ipiv[DIIS_MAX_PREV_VECTORS + 1])
-{
-  extern void dgesv_(long *, long *, double *, long *, long *, double *, long *, long *);
-  long n, nrhs, lda, ldb, info;
-  n = lda = ldb = (long) int_n;
-  nrhs = 1L;
-
-  dgesv_(&n, &nrhs, a, &lda, ipiv, b, &ldb, &info);
-
-  return info;
-}
 
 void broyden(int niter, double alpha, int jtop, double *vecin, double *vecout, dftb_broyden_t *arrays);
 

@@ -854,17 +854,11 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
 #else
         init_dftb_pme(dftb, ct, ir);
 #endif
+
+
 #ifdef GMX_MPI
     if (ct_mpi_rank == 0) {
 #endif
-
-	/* optimize QM zone before starting MD loops */
-        if(ct->opt_QMzone){
-	  ct_collect_x(cr, state_global);
-	  for (i=0; i<top_global->natoms; i++)
-	    copy_rvec(state_global->x[i], x_ct[i]);
-          search_starting_site(state->box, mdatoms, dftb, ct, x_ct, slko_path, top_global, state_global->x);
-        }
 
         if (ct->jobtype != cteESP) {
           f_tb_hamiltonian = fopen("TB_HAMILTONIAN.xvg", "w");
@@ -1357,6 +1351,17 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
 		    //}
 	#endif
 
+	/* optimize QM zone at the beginning */
+        if(ct->pool_size > ct->sites && ct_mpi_size > 1 ){
+          printf("Adaptive QM zone works only without MPI\n");//TODO: implement MPI version (segfaults arise later in adapt_QMzone)
+          exit(-1);
+        }
+        if(ct->opt_QMzone && ct->first_step){
+	  ct_collect_x(cr, state_global);
+	  for (i=0; i<top_global->natoms; i++)
+	    copy_rvec(state_global->x[i], x_ct[i]);
+          search_starting_site(state->box, mdatoms, dftb, ct, x_ct, slko_path, top_global, state_global->x);
+        }
 
 
    printf("start prepare at %f\n", (double) clock()/CLOCKS_PER_SEC);
@@ -1384,6 +1389,7 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
            for (i=0; i<ct->sites; i++){
            //printf("Bcast at rank %d at %f\n", ct_mpi_rank, (double) clock()/CLOCKS_PER_SEC);
            MPI_Bcast(dftb->phase1[i].a[0], SQR(dftb->phase1[i].norb),          MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);//needed to build the coarse grained hamilton matrix at main node
+           MPI_Bcast(dftb->phase1[i].overl[0], SQR(dftb->phase1[i].norb),      MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);//needed in check_and_invert_orbital_phase
            MPI_Bcast(dftb->phase1[i].qmat, dftb->phase1[i].nn,                 MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);// "
            MPI_Bcast(dftb->phase1[i].ev, dftb->phase1[i].norb,                 MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);// "
            //printf("after Bcast at rank %d at %f\n",i % ct_mpi_size, (double) clock()/CLOCKS_PER_SEC);
@@ -1839,7 +1845,7 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
    if (ct->jobtype==cteSCCDYNAMIC || ct->jobtype==cteADIABATIC || ct->jobtype==cteNONSCCDYNAMIC || ct->jobtype==cteADNONSCC || ct->jobtype==cteSURFACEHOPPING || 
          ct->jobtype==cteFERMI || ct->jobtype==cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype==cteFERMISFHOPPING || ct->jobtype==cteTULLYFEWESTSWITCHES||ct->jobtype==cteTULLYLOC || ct->jobtype==ctePERSICOSFHOPPING ||
          ct->jobtype==cteNEGFLORENTZ) {
-     /* communicate the occupations to the slaves */
+     /* communicate the occupations and wavefunction to the slaves */
      if (ct_mpi_rank == 0) {
        for (i=1; i<ct_mpi_size; i++)
          MPI_Send(ct->occupation, ct->dim, MPI_DOUBLE, i, 200+i, ct_mpi_comm);
@@ -1848,6 +1854,13 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
        ct->survival = 0.0;
        for (i=0; i<ct->dim; i++)
          ct->survival += ct->occupation[i];
+     }
+
+     if (ct_mpi_rank == 0) {
+       for (i=1; i<ct_mpi_size; i++)
+         MPI_Send(ct->wf, 2*ct->dim, MPI_DOUBLE, i, 300+i, ct_mpi_comm);
+     } else {
+       MPI_Recv(ct->wf, 2*ct->dim, MPI_DOUBLE, 0, 300+ct_mpi_rank, ct_mpi_comm, &ct_mpi_status);
      }
    }
 #endif
@@ -1874,11 +1887,14 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
     MPI_Barrier(ct_mpi_comm);
     for (i=0; i<ct->sites; i++){
       MPI_Bcast(ct->site[i].delta_q[0], ct->site[i].homos*ct->site[i].atoms, MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm); //needed to build the hubbard matrix at main node
-      if ( ct->do_lambda_i==2 )
+      if ( ct->do_lambda_i==2 || ct->do_lambda_i ==3 )
         MPI_Bcast(dftb->phase1[i].grad[0], 3*dftb->phase1[i].nn,  	       MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);//needed to add forces for explicit lambda_i //try to send rvec -> 3*double. have to  test
       if (ct->qmmm == 3) 
         MPI_Bcast(&(dftb->phase1[i].esp), 1,  MPI_DOUBLE, i % ct_mpi_size, ct_mpi_comm);
     }
+    if ( ct->do_lambda_i==3 )
+      MPI_Bcast(dftb->phase2.grad[0],  3*dftb->phase2.nn, MPI_DOUBLE, 0, ct_mpi_comm );
+
     MPI_Barrier(ct_mpi_comm);
     #else
     get_MM_params(ct, dftb);
@@ -2034,18 +2050,19 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
 /*********************************************************************************/
           //add QM forces to relax site geometry
 /*********************************************************************************/
+//TODO: this way to add forces is not completely correct. There are differences in simulations on single and multiple nodes. This is, however, already the case with normal GROMACS but now more pronounced.
+//forces should be added somewhere INSIDE do_force. probably do_force_lowlevel()
+
             if ( ct->do_lambda_i==2 || ct->do_lambda_i==3) 
-            //if ( ct->do_lambda_i==2 ) 
               for(i=mdatoms->start;i<mdatoms->start+mdatoms->homenr;i++) //iterate over home atoms
               {
                for(j=0; j<ct->sites; j++)
                for(k=0; k<ct->site[j].atoms; k++)
                if(i==ct->site[j].atom[k]){ //atom is at home on this node
                  for(l=0; l<DIM; l++) {
-//printf("atom i %d MM force %lf   QM force %lf \n", i, f[i][l], -(real) HARTREE_BOHR2MD * dftb->phase1[j].grad[k][l]);
-                     f[i][l]      -= (real) HARTREE_BOHR2MD * dftb->phase1[j].grad[k][l]; 
-
-             //      fshift[i][j] = (real) HARTREE_BOHR2MD * dftb1.grad[i][j]; TODO: what is fshift? this is used in QMMM gromacs code
+                   f[i][l]      -= (real) HARTREE_BOHR2MD * dftb->phase1[j].grad[k][l]; 
+                   //printf("atom i %d MM force %lf   QM force %lf \n", i, f[i][l], -(real) HARTREE_BOHR2MD * dftb->phase1[j].grad[k][l]);
+                   //fshift[i][j] = (real) HARTREE_BOHR2MD * dftb1.grad[i][j]; TODO: what is fshift? this is used in QMMM gromacs code
                  }
                }
               }
@@ -2057,8 +2074,8 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
                for(k=0; k<ct->site[j].atoms; k++){
                  if(i==ct->site[j].atom[k]){ //atom is at home on this node
                    for(l=0; l<DIM; l++) {
-//printf("atom i %d MM force %lf   QM force %lf \n", i, f[i][l], -(real) HARTREE_BOHR2MD * dftb->phase1[j].grad[k][l]);
                      f[i][l]      -= (real) HARTREE_BOHR2MD * dftb->phase2.grad[counter][l];
+                     //printf("atom i %d MM force %lf   QM force %lf \n", i, f[i][l], -(real) HARTREE_BOHR2MD * dftb->phase1[j].grad[k][l]);
                    }
                  }
                 counter++;

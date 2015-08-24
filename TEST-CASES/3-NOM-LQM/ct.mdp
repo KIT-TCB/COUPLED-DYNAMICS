@@ -1,0 +1,33 @@
+integrator          =  md
+dt                  =  0.001
+nsteps              =  20
+nstxout             =  1
+nstvout             =  0
+nstlog              =  10
+nstenergy           =  10
+nstlist             =  1                        ; update pairlist
+ns_type             =  grid                     ; pairlist method
+pbc                 =  xyz
+coulombtype         =  PME
+cutoff-scheme       =  group     
+vdwtype             =  Cut-off
+; Apply long range dispersion corrections for Energy and Pressure
+DispCorr            = EnerPres
+rlist               =  1.00             ; cut-off for ns
+rvdw                =  1.00             ; cut-off for vdw
+rcoulomb            =  1.00
+
+gen_vel             =  no
+
+tcoupl              =  nose-hoover
+tc_grps             =  system
+nh-chain-length     =  1
+tau_t               =  0.2
+ref_t               =  400
+
+pcoupl              =  Parrinello-Rahman
+pcoupltype          =  semi-isotropic
+tau_p               =  2.0 2.0
+ref_p               =  1.0 1.0
+compressibility     =  8.6e-6 8.6e-6
+

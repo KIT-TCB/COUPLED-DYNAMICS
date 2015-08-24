@@ -1,0 +1,6 @@
+Some test cases to check if the program is working correctly.
+
+Edit "perform-test.sh" to run your program and compare results against a file expected_... , which was generated with a working version of the code. However, output can vary depending on the compilation so failure of a test does not necessarily mean that the program is broken.  
+
+It is recommended to perform cases in the right order (1-..., 2-..., etc.) since lower cases test more basic functionalities.
+

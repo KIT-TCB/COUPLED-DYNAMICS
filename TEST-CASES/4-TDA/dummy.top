@@ -1,0 +1,47 @@
+; Dummy topology for charge transfer. Residues distinguish fragments. Default format is for two symmetric fragments. If needed, partition atoms into residues by hand.
+;
+;
+; The force field files to be included
+#define _FF_USER
+
+[ defaults ]
+;nbfunc     comb-rule      gen-pairs     fudgeLJ      fudgeQQ
+      1             2            yes         0.5      0.833333
+
+[ atomtypes ]
+; name        mass      charge    ptype               sigma             epsilon
+     d      1.00000     0.00000        A        3.399676e-01        3.598240e-01                   
+
+ [ moleculetype ]
+; name  nrexcl
+mol   3
+
+ [ atoms ]
+;  nr    type   resnr   residu   atom   cgnr    charge      mass
+     1       d      1      MOL     CQM      1   0.00000   1.00000
+     2       d      1      MOL     CQM      2   0.00000   1.00000
+     3       d      1      MOL     FQM      3   0.00000   1.00000
+     4       d      1      MOL     FQM      4   0.00000   1.00000
+     5       d      1      MOL     HQM      5   0.00000   1.00000
+     6       d      1      MOL     HQM      6   0.00000   1.00000
+     7       d      2      MOL     CQM      7   0.00000   1.00000
+     8       d      2      MOL     CQM      8   0.00000   1.00000
+     9       d      2      MOL     HQM      9   0.00000   1.00000
+    10       d      2      MOL     HQM     10   0.00000   1.00000
+    11       d      2      MOL     HQM     11   0.00000   1.00000
+    12       d      2      MOL     HQM     12   0.00000   1.00000
+    13       d      3      MOL     CQM     13   0.00000   1.00000
+    14       d      3      MOL     CQM     14   0.00000   1.00000
+    15       d      3      MOL     FQM     15   0.00000   1.00000
+    16       d      3      MOL     FQM     16   0.00000   1.00000
+    17       d      3      MOL     HQM     17   0.00000   1.00000
+    18       d      3      MOL     HQM     18   0.00000   1.00000
+
+ [ system ]
+; title from amber topology
+MOL
+
+
+ [ molecules ]
+; molecule name    nr.
+mol          1
