@@ -1,8 +1,7 @@
-6
-12
-12
-100.0
-0
-1
-6  0.0 0.0
-END
+natoms		=6
+nelectrons	=12
+nallorbitals	=12
+radius		=100.0
+nqmmmbonds	=0
+nfragorbs	=1
+fragorbs	=6

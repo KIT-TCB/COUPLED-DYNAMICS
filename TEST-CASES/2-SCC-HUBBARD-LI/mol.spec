@@ -1,46 +1,14 @@
-60
-186
-186
-0.7
-6
-2
-HR30
-HR31
-1
-CR44
--0.01478
-2
-HR51
-HR52
-1
-CR54
--0.01478
-2
-HR72
-HR73
-1
-CR64
--0.01478
-2
-HR93
-HR94
-1
-CR74
--0.01478
-2
-HR114
-HR115
-1
-CR84
--0.01478
-2
-HR135
-HR136
-1
-CR94
--0.01478
-2
-92   0.111   0.0016
-93   0.111   0.0016
-END
-
+natoms		=60
+nelectrons	=186
+nallOrbitals	=186
+radius		=0.7
+nQMMMbonds	=6
+nIgnorechr	= 2 2 2 2 2 2
+nameIgnorechr   = HR30 HR31   HR51 HR52   HR72 HR73   HR93 HR94   HR114 HR115  HR135 HR136
+nAddchr		= 1 1 1 1 1 1
+nameAddchr	= CR44 CR54 CR64 CR74 CR84 CR94
+totalAddchr     = -0.01478 -0.01478 -0.01478 -0.01478 -0.01478 -0.01478
+nFragorbs	= 2
+Fragorbs	= 92 93
+lambda_i        = 0.0016 0.0016
+hubbard		= 0.111 0.111

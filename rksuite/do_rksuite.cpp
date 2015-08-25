@@ -107,6 +107,7 @@ typedef struct {
   int jobtype;
   int interval;
   int qmmm;
+  int delta_q_mode;    /* 0 use Mulliken charges, 1 use RESP charges to describe the charge carrier */
   int sitetypes;       /* number different types of sites e.g. adenine and guanine */
   ct_site_t *sitetype; /* list of different types of sites */
   int sites;           /* number of sites */
@@ -127,6 +128,7 @@ typedef struct {
   int *extcharge_cplx; /* list of extcharges - for the complex */
   int modif_extcharges_cplx;        /* atomnumber of charges which will be modified */
   int *modif_extcharge_cplx;        /* dtto for the complex */
+  double *fo_shift;     /* shift that will be applied to the diagonal elements of the FO hamiltonian. can correct the difference between HOMO differences and IP differences */
   double **hamiltonian;/* CG Hamiltonian, calculated by DFTB, to be used in TDSE integration */
                        /* n x n matrix, fortran format */
   double ***hamiltonian_history;/* history over last few steps of CG Hamiltonian, to average fast (nonclassical) oscillations */

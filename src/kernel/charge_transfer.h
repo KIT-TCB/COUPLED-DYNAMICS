@@ -102,6 +102,9 @@
 #define FERMI_CONVERG (1.e-12) // 1.e-9 kT in hartree units (at 300 K)
 #define SIMPLE_ALMIX (0.01)
 #define ALMIX_ATTENUATOR (0.9)
+#define MAXLINES (50) // maximal length of input file
+#define MAXWIDTH (1500) // maximal width of key and value of input file 
+#define MAXSITETYPES (5) // maximal number of different sites
 
 #define NEG_IMAG_POT (1.e-3)  // tau for the negative imaginary potential on the last couple of sites
 /* #define SURVIVAL_THRESHOLD (0.1)  // if the survival drops under this value, finish */
@@ -237,6 +240,7 @@ typedef struct {
   int jobtype;         /* cteXXX */
   int interval;        /* how often should the parameters be calculated? */
   int qmmm;            /* 1 or 0 */
+  int delta_q_mode;    /* 0 use Mulliken charges, 1 use RESP charges to describe the charge carrier */
   int sitetypes;       /* number different types of sites e.g. adenine and guanine */
   ct_site_t *sitetype; /* list of different types of sites */
   int sites;           /* number of sites */
@@ -266,6 +270,7 @@ typedef struct {
   int modif_extcharges_cplx;        /* atomnumber of charges which will be modified */
   int *modif_extcharge_cplx;        /* their atomnumber */
 //  double **delta_q;    /* difference of charge of neutral nucleobase and cation; array for each nucleobase */			NOW IN STRUCT SITE
+  double *fo_shift;    /* shift that will be applied to the diagonal elements of the FO hamiltonian. can correct the difference between HOMO differences and IP differences */
   double **hamiltonian;/* CG Hamiltonian, calculated by DFTB, to be used in TDSE integration */
                        /* n x n matrix, fortran format */
   double ***hamiltonian_history;/* history over last n_avg_ham steps of CG Hamiltonian, to average fast (nonclassical) oscillations */
@@ -607,6 +612,7 @@ void check_and_invert_orbital_phase(dftb_phase1_t *dftb1, charge_transfer_t *ct)
 
 int negf_propagate(charge_transfer_t *ct);
 //Alex
+int searchkey(int lines, char input[MAXLINES][2][MAXWIDTH], char *key , char value[MAXWIDTH], int required);
 t_atoms gmx_mtop_global_atoms(const gmx_mtop_t *mtop);
 void get_delta_q(dftb_t *dftb, charge_transfer_t *ct, int i);
 void get_internal_forces(dftb_t *dftb, charge_transfer_t *ct, int site_i);

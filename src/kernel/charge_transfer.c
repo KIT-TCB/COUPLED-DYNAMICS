@@ -6,6 +6,8 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
+
 #include "charge_transfer.h"
 
 #ifdef GMX_MPI
@@ -177,6 +179,23 @@ int negf_propagate(charge_transfer_t *ct)
   return 0;
 }
 
+int searchkey(int lines, char input[MAXLINES][2][MAXWIDTH], char *key , char value[MAXWIDTH], int required){
+  int line;
+  for (line=0; line<lines; line++){
+    if(strcmp(input[line][0],key)==0){
+      strcpy(value, input[line][1]);
+      return 1;
+    }
+  }
+  if (required){
+    printf("KEYWORD %s NOT FOUND!\n", key);
+    exit(-1);
+  }else{
+    return 0;
+  }
+}
+
+
 
 /***************************************
  * INITIALIZE THE CHARGE TRANSFER CODE *
@@ -188,13 +207,65 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mdatoms, charge_transfer_t *ct, char *slko_path, t_state *state) {
 #endif
   FILE *f, *f2;
-  char *line1=NULL, *line2=NULL, sitespecdat[30];
-  size_t len;
+  char sitespecdat[MAXSITETYPES][MAXWIDTH], value[MAXWIDTH];
+  char possiblekeys[][2][MAXWIDTH]={
+  {"slkopath",  "Path to directory of the DFTB Slater-Koster files"},
+  {"chargecarrier",   "The charge carrier (electron/hole). Will effect sign of the Hamilton matrix and of the charges that are added to the force-field."},
+  {"offdiagscaling",   "(yes/on) Scale offdiagonal elements of FO Hamiltonian. See: J. Chem. Phys. 2014, 140, 104105+  and  Phys. Chem. Chem. Phys. 2015, 17, 14342-14354."},
+  {"extchrmode",   "Treatment of the MM pointcharges. (vacou) is as it says, (qmmm) uses pointcharges with minimum image convention, (pme) is particle-mesh-Ewald treatment"},
+  {"espscaling",  "Scales the strength of the electrostatic potential of the environment with 1/espscaling."},
+  {"efield", "External electric field vector [V/cm]. X Y and Z direction. Adds shift to the site energies depending on their position."},
+  {"nsitetypes", "Number of unique molecules."},
+  {"typefiles", "File with specifications for every unique fragment."},
+  {"nsites", "Total number of sites that are treated at the QM level."},
+  {"zonesize", "Select QM zone as subset of nstites. Default is zonesize=nsites."},
+  {"optimizezone", "If (yes/on) construct QM zone of zonesize fragments around site with lowest energy of all nsites fragments."},
+  {"sites", "Residue number of all nsites fragments"},
+  {"sitetypes", "Type of every site. 1,2,3,etc. corresponding to the order of typefiles."},
+  {"sitescc", "(0) Non-self-consistent DFTB1 calculations. (1) Self-consistent DFTB2 calculations. (2) DFTB2 calculations where initial charges are taken from last MD step to accelerater convergence."},
+  {"foshift", "Shift that is added to the diagonal elements of the FO hamiltonian [hartree]. This can correct for wrong relative energies due to approximating ionization potentials with HOMO energies"},
+  {"jobtype", "(PAR)(SCC)(TDA)"},
+  {"nstqm", "Frequency of the QM calculations for jobs whithout propagation. 1 is every step, 2 is every other step etc."},
+  {"tfermi", "Fermi Temperature [K] for certain jobs."},
+  {"epol", "Electronic polatization model. (imp) is naive implicit polarization (like born-model) for the charge carrier."},
+  {"sic", "Self interaction correction factor. Scales second order terms. See: J. Phys. Chem. B 2010, 114, 11221-11240."},
+  {"internalrelax", "Internal relaxation of the sites. (parameter) uses precalculated values. (onsite) relaxes each site according to DFTB forces. (full) additionally calculates inter-molecular forces."},
+  {"wavefunctionreal", "Coefficients of the starting Wavefunction. Real part. Default is vector of zeroes. If non-normalized wavefunction is provided, lowest adiabatic eigenvector will be taken instead."},
+  {"wavefunctionim", "Imaginary part of the wavefunction coefficients. Default is vector of zeroes."},
+  {"nnegimpot", "Negative imaginary potential. Can be used to annihilate charge."},
+  {"negimpotrate", "Rate for charge annihilation."},
+  {"negimpotfos", "FOs from which the charge will be annihilated."},
+  {"deltaqmode", "Either add precalculated RESP charges to the force-field to describe the charge-carrier (resp) or use internally obtained DFTB Mulliken-charges (mulliken)"}
+  };
+
+  char possiblekeys2[][2][MAXWIDTH]={
+  {"natoms", "Number of QM atoms of this site (inclusive capping atoms)."},
+  {"nelectrons", "Total number of valence electrons of this site."},
+  {"nallorbitals", "Sum of occupied and virtual MOs of this site (note that there are only valence electrons in DFTB)"},
+  {"radius", "Radius for spherical approximation of the site. Needed in Born solvation model."},
+  {"nqmmmbonds", "Number of bonds that have to be capped."},
+  {"nignorechr", "For each bond the number of MM atoms (besides the MM link atom) whose charge will be deleted. Use 'nignorechr=1 2' to delete 1 additional charge for the first and 2 for the second bond"},
+  {"nameignorechr", "Atomnames for nignorechr. Use of 'nameignorechr=H1 H3 H4' with nqmmmbonds=2 and 'nignorechr=1 2' will delete H1 for the first bond and H3 and H4 for the second bond"},
+  {"naddchr", "For each bond 'totaladdchr' will be distributed over 'naddchr' atoms to restore the integer total charge of the environment."},
+  {"nameaddchr", "Atomnames for naddchr. Use of 'nameaddchr=C1 C3 C4' with 'nqmmmbonds=2' , 'naddchr=1 2' and 'totaladdchr=-0.1 0.05' will put -0.1 on C1 and distibute 0.05 over C3 and C4"},
+  {"totaladdchr", "Charge for each QM/MM bond to restore the integer total charge of the environment."},
+  {"nfragorbs", "Number of molecular orbitals of this site that will be used in the fragment orbital Hamiltonian."},
+  {"fragorbs", "The index (starting from 1) of the molecular orbitals."},
+  {"hubbard", "Hubbard parameter for each orbital."},
+  {"lambda_i", "Lambda_i for each orbital."},
+  {"dqresp", "List of RESP charges that will be added to the QM atoms, scaled by the occupation of the HOMO/LUMO. If more than one HOMO is used per site, first the list for the first FO is read then for the second."}
+  };
+
+
   int i, j, k, l, m, n, counter, *counter_array, counter_cplx, QMLAcounter, MMLAcounter, QMCAcounter, QMCApool[QMCASIZE], QMCApoolcounter, environment, environment_cplx, modif_cplx, counter_modif_cplx=0,
       mm_list_size, *mm_list;
   double  sum,bond_length, bond_length_best, X[3], Y[3], magnitude, mass;
   dvec bond;
-  ct_site_t *site;
+  ct_site_t *site, s;
+
+  char input[MAXLINES][2][MAXWIDTH],input2[MAXLINES][2][MAXWIDTH], *ptr; // 100 lines, 2 collumns (before and after '='), and string of 200 chars
+  int line, lines, lines2, ch, len;
+
   ct->first_step=1;
 #ifdef GMX_MPI
   printf("Initializing charge transfer at rank %d\n", ct_mpi_rank);
@@ -211,380 +282,579 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   PRINTF("Reading file charge-transfer.dat\n");
   //snew(ct, 1);
 
-  fscanf(f, "%s\n", slko_path);
-  PRINTF("SLKO files will be sought in %s\n", slko_path);
 
-  /* Job type */
-  getline(&line1, &len, f);
-  if (strstr(line1, "SCC") || strstr(line1, "scc") || strstr(line1, "Scc")) {
-    ct->jobtype = cteSCCDYNAMIC;
-    PRINTF("Fully coupled electron-ion dynamics\n");
-  } else {
-    if (strstr(line1, "ADI") || strstr(line1, "adi") || strstr(line1, "Adi")) {
-      ct->jobtype = cteADIABATIC;
-      PRINTF("Adiabatic Born-Oppenheimer (SCF) dynamics of the hole\n");
-    } else {
-      if(strstr(line1, "BOD")||strstr(line1, "bod")||strstr(line1, "Bod")){  //JJK
-        ct->jobtype=cteBORNOPPENHEIMER;
-	PRINTF("Born-Oppenheimer dynamics with explicit following of the wave function\n");
-      } else {
-	if (strstr(line1, "NON") || strstr(line1, "non") || strstr(line1, "Non")) {
-	  ct->jobtype = cteNONSCCDYNAMIC;
-	  PRINTF("Uncoupled dynamics of the hole - w/o the polarization of solvent\n");
-	} else {
-	  if (strstr(line1, "PAR") || strstr(line1, "par") || strstr(line1, "Par")) {
-	    ct->jobtype = ctePARAMETERS;
-	    PRINTF("Calculation of charge-transfer parameters only");
-	  } else {
-	    if (strstr(line1, "ADN") || strstr(line1, "adn") || strstr(line1, "Adn")) {
-	      ct->jobtype = cteADNONSCC; // adiabatic non-self-consistent-charges
-	      PRINTF("Adiabatic Born-Oppenheimer (SCF) dynamics of the hole w/o the polarization of solvent\n");
-	    } else {
-	      if (strstr(line1, "NOM") || strstr(line1, "nom") || strstr(line1, "Nom")) {
-		ct->jobtype = cteNOMOVEMENT;
-		PRINTF("Stationary charge, calculation of all contributions to hamiltonian\n");
-	      } else {
-		if (strstr(line1, "SFH") || strstr(line1, "sfh") || strstr(line1, "Sfh")) {
-		  ct->jobtype = cteSURFACEHOPPING;
-		  PRINTF("Surface hopping between adiabatic surfaces, diabatic limit\n");
-		} else {
-		  if (strstr(line1, "FER") || strstr(line1, "fer") || strstr(line1, "Fer")) {
-		    ct->jobtype = cteFERMI;
-		    PRINTF("Dynamics with Fermi-distribution-based combination of adiabatic states\n");
-		  } else {
-		    if (strstr(line1, "FAD") || strstr(line1, "fad") || strstr(line1, "Fad")) {
-		      ct->jobtype = cteFERMIADIABATIC;
-		      PRINTF("Dynamics of the adiabatic ground state obtained from the Fermi-distribution-based combination\n");
-		    } else {
-		      if (strstr(line1, "FSH") || strstr(line1, "fsh") || strstr(line1, "Fsh")) {
-			ct->jobtype = cteFERMISFHOPPING;
-			PRINTF("Surface hopping between adiabatic states obtained from the Fermi-distribution-based combination, diabatic limit\n");
-		      } else {
-			if (strstr(line1, "TFS") || strstr(line1, "tfs") || strstr(line1, "Tfs")) {
-			  ct->jobtype = cteTULLYFEWESTSWITCHES;
-			  PRINTF("Tully's fewest switches surface hopping between adiabatic states from Fermi-dist. combination\n");
-			} else {
-			  if(strstr(line1, "TFL")||strstr(line1, "tfl")||strstr(line1, "Tfl")) {
-			    ct->jobtype = cteTULLYLOC;                           
-			    PRINTF("Tully's fewest switches surface hopping adapted for systems with localized, spatially spread-out adiab. states \n");
-			  } else{
-			    if (strstr(line1, "PER") || strstr(line1, "per") || strstr(line1, "Per") || strstr(line1, "PED") || strstr(line1, "ped") || strstr(line1, "Ped")) {
-			      ct->jobtype = ctePERSICOSFHOPPING;
-			      PRINTF("Persico's locally diabatic surface hopping between adiabatic states from Fermi-dist. combination\n");
-			      if (strstr(line1, "PED") || strstr(line1, "ped") || strstr(line1, "Ped")) {
-				ct->decoherence = 1;
-				PRINTF(" - correction for quantum decoherence switched on!\n");
-			      } else {
-				ct->decoherence = 0;
-			      }
-			    } else {
-			      if (strstr(line1, "NGL") || strstr(line1, "ngl") || strstr(line1, "Ngl")) {
-				ct->jobtype = cteNEGFLORENTZ;
-				PRINTF("Calculation of electric current with non-equlibrium Green's function approach + Lorentzian functions\n");
-				PRINTF(" - populations of molecules mapped onto MD charges (self-consistent calculation)\n");
-			      } else {
-				if (strstr(line1, "NGN") || strstr(line1, "ngn") || strstr(line1, "Ngn")) {
-				  ct->jobtype = cteNEGFLORENTZNONSCC;
-				  PRINTF("Calculation of electric current with non-equlibrium Green's function approach + Lorentzian functions\n");
-				  PRINTF(" - no mapping of charges to MD (non-self-consistent calculation)\n");
-				} else {
-				  if (strstr(line1, "ESP") || strstr(line1, "esp") || strstr(line1, "Esp")) {
-				    ct->jobtype = cteESP;
-				    PRINTF("Calculation of electrostatic potential only\n");
-				  } else {
-				    if (strstr(line1, "TDA") || strstr(line1, "Tda") || strstr(line1, "tda")) {
-				      ct->jobtype = cteTDA;
-				      PRINTF("Calculation of Tunneling matrix elements through bridge.\n*******************************\n | ATTENTION: development version. only works for one specific peptide | \n ***************************** ");
-				    } else {
-				      if (strstr(line1, "GFS") || strstr(line1, "gfs") || strstr(line1, "Gfs") || strstr(line1, "GFD") || strstr(line1, "gfd") || strstr(line1, "Gfd")) {
-					ct->jobtype = ctePREZHDOSFHOPPING;
-					printf("Global Flux Surface Hopping\n");
-					if (strstr(line1, "GFD") || strstr(line1, "gfd") || strstr(line1, "Gfd")) {
-					  ct->decoherence = 1;
-					  PRINTF(" - correction for quantum decoherence switched on!\n");
-					} else {
-					  ct->decoherence = 0;
-					}
-				      } else {
-					PRINTF("Unknown job type for charge transfer, use one of:\n");
-					PRINTF("   SCCDYNAMIC, ADIABATIC, NON S C C, PARAMETERS, ADNON S C C, NOMOVEMENT, SFH (surface hopping), FER (dynamic with Fermi distribution),\n");
-					PRINTF("   FAD (ground state from Fermi mixture), FSH (Fermi-based surface hopping), TFS (Tully's fewest switches),\n");
-					PRINTF("   PER (Persico's surface hopping), PED (Persico's surface hopping with decoherence correction),\n");
-					PRINTF("   NGL (non-equilibrium Green's function calc. of current), NGN (dtto, non-self-consistent calculation),\n");
-					PRINTF("   ESP (calculation of electric potential only).\n");
-					PRINTF("Exiting!\n");
-					exit(-1);
-				      }
-				    }
-				  }
-				}
-			      }
-			    }
-			  }
-			}
-		      }
-		    }
-		  }
-		}
-	      }
-	    }
-	  }
-	}
+  /* get length of input file */
+  lines=0;
+  while(!feof(f)){
+    ch = fgetc(f);
+    if(ch == '\n'){lines++;}
+  }
+  //rewind(f);
+  fclose(f);
+  f=fopen("charge-transfer.dat","r");
+
+
+  /* read input file */
+  
+  //convert all to lowercase for better handling (besides file names)
+  for (line=0; line<lines; line++){
+    //ch=fscanf(f, "%[;a-zA-Z0-9/] = %[-a-zA-Z0-9/{}. ]\n", input[line][0],  input[line][1]);
+    ch=fscanf(f, " %[^= \t] = %[^=\n\t] \n", input[line][0],  input[line][1]); 
+    if (ch != 2 ){printf("READING ERROR in line %d.\n Use format 'keyword = value'.\n ", line+1); exit(0);}
+    //strlwr(input[line][0]);
+    len = strlen(input[line][0]);
+    for(i=0; i<len; i++)
+       input[line][0][i]=tolower((unsigned char)input[line][0][i]);
+    if (strcmp(input[line][0],"slkopath")!=0 && strcmp(input[line][0],"specfiles")){
+      len = strlen(input[line][1]);
+      for(i=0; i<len; i++)
+         input[line][1][i]=tolower((unsigned char)input[line][1][i]);
+    }
+    // check input file
+    j=1;
+    for (i=0; i< sizeof(possiblekeys)/sizeof(possiblekeys[0]); i++){
+      if(strcmp(input[line][0],possiblekeys[i][0])==0)
+        j=0;
+    }
+    if (j) {
+      PRINTF("KEYWORD NOT KNOWN: %s\nALLOWED KEYWORDS:\n", input[line][0]);
+      for (i=0; i< sizeof(possiblekeys)/sizeof(possiblekeys[0]); i++){
+        PRINTF("%20s:  %s\n",possiblekeys[i][0], possiblekeys[i][1]);
       }
-    }
-  }
-  /* how often should the parameters be calculated? */
-  if (ct->jobtype == ctePARAMETERS || ct->jobtype==cteNOMOVEMENT || ct->jobtype==cteESP || ct->jobtype==cteTDA) {
-    fscanf(f, "%d\n", &(ct->interval));
-    if (ct->interval < 1) {
-      PRINTF("\nRead a value of %d, setting to 1\nCalculation of charge-transfer parameters (or ESP) only", ct->interval);
-      ct->interval = 1;
-    }
-    PRINTF(" every %d steps.\n", ct->interval);
-  }
-
-  /* should CG Hamiltonian be self-consistent ? */
-/*
-  if (ct->jobtype == ctePERSICOSFHOPPING){
-    fscanf(f, "%d\n", &(ct->do_scc_CG));
-    switch (ct->do_scc_CG) {
-    case 0:
-      PRINTF("coarse grained Hamiltonian will be calculated non-self-consitently \n");
-      break;
-    case 1:
-      PRINTF("coarse grained Hamiltonian will be calculated self-consitently \n");
-      break;
-    default:
-      PRINTF("Ilegal value: %d \n Non-SCC = 0 \n SCC = 1\n", ct->do_scc_CG);
       exit(-1);
     }
   }
-*/
+  fclose(f);
+  PRINTF("Finished reading file charge-transfer.dat\n");
 
-  /* get the electronic temperature for the Fermi distribution */
-  if (ct->jobtype == cteFERMI || ct->jobtype == cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype == cteFERMISFHOPPING || ct->jobtype == cteTULLYFEWESTSWITCHES || ct->jobtype == ctePERSICOSFHOPPING) {
-    fscanf(f, "%lf\n", &(ct->telec));
-    ct->fermi_kt = BOLTZMANN_HARTREE_KELVIN * ct->telec;
-    PRINTF("Electronic temperature for Fermi distribution is %f K, kT(elec) = %f a.u.\n", ct->telec, ct->fermi_kt);
+  /* print copy of the input file */
+  printf("INPUT:\n");
+  for (line=0; line<lines; line++){
+    printf("%s = %s\n", input[line][0], input[line][1]);
   }
 
-  /* hole or electron transfer? */
-  getline(&line2, &len, f);
-  if (strstr(line2, "hole") || strstr(line2, "Hole") || strstr(line2, "HOLE") ) {
+
+
+  /* set default options */
+
+  // either sensible values or "not defined"=-1 for values that have to be specified in the input file and will be checked later.
+  ct->n_avg_ham = 1; // average hamilton over n_avg_ham steps to assimilate fast non-classical vibrations
+  ct->esp_scaling_factor = 1.; // scaling of the electrostatic potential of the environment
+  ct->do_lambda_i = 0;
+  ct->opt_QMzone=0;
+  ct->neg_imag_pot = 0; //negative imaginary potential to drain the charge at some sites
+  ct->decoherence = 0;
+
+
+  /* evaluate input */
+
+  /* read in stuff that is always needed */
+  searchkey(lines, input, "slkopath", slko_path, 1);
+  PRINTF("SLKO files will be sought in %s\n", slko_path);
+
+  searchkey(lines, input, "chargecarrier",value, 1);
+  if(strcmp(value,"hole")==0){
     ct->is_hole_transfer = 1;
     PRINTF("perform hole transfer\n");
-  }
-  else if (strstr(line2, "electron") || strstr(line2, "Electron") || strstr(line2, "ELECTRON") ) {
+  }else if (strcmp(value,"electron")==0){
     ct->is_hole_transfer = 0;
     PRINTF("perform electron transfer\n");
-  }
-  else {
-    PRINTF("electron or hole transfer not specified\n");
+  }else{
+    PRINTF("chargecarrier value not known\n");
     exit(-1);
   }
-  /* scaling of off-diagonal elements? */
-  getline(&line2, &len, f);
-  if (strstr(line2, "SOD") || strstr(line2, "sod") || strstr(line2, "Sod") ) {
-    ct->offdiag_scaling = ct->is_hole_transfer ? OFFDIAG_FACTOR_HOLE : OFFDIAG_FACTOR_ELEC; // 1.540 :  1.795
-    PRINTF("scaling of off-diagonal elements applied\n");
-  }
-  else {
+  if (searchkey(lines, input, "offdiagscaling",value, 0)){
+    if(strcmp(value,"yes")==0||strcmp(value,"on")==0||strcmp(value,"1")==0){
+      PRINTF("  scaling of off-diagonal elements applied \n");
+      switch (ct->is_hole_transfer){
+         case 1: ct->offdiag_scaling = OFFDIAG_FACTOR_HOLE; break;// 1.540 
+         case 0: ct->offdiag_scaling = OFFDIAG_FACTOR_ELEC; break;// 1.795
+      }
+    }else if (strcmp(value,"no")==0||strcmp(value,"off")==0||strcmp(value,"0")==0){
+      ct->offdiag_scaling = 1.0;
+      PRINTF("standard hamilton matrix. off-diagonal elements unscaled\n");
+    }else{
+      PRINTF("Did not understand offdiagscaling option.\n");
+      exit(-1);
+    }
+  }else{
+    ct->offdiag_scaling = 1.0;
     PRINTF("standard hamilton matrix. off-diagonal elements unscaled\n");
-    ct->offdiag_scaling=1.0;
   }
-  /* average hamilton to assimilate fast non-classical vibrations */
-  /*getline(&line2, &len, f);
-  if (strstr(line2, "AVG") || strstr(line2, "avg") || strstr(line2, "Avg") ) {
-    //ct->avg_ham = 1 ;
-    fscanf(f, "%d\n", &(ct->n_avg_ham));
-    PRINTF("averaging hamilton over %d steps to assimilate fast non-classical vibrations\n", ct->n_avg_ham);
-  }
-  else {
-    //ct->avg_ham = 0;
-    ct->n_avg_ham = 1;
-  }*/
-  ct->n_avg_ham = 1;
-  //PRINTF("averaging hamilton over %d steps to assimilate fast non-classical vibrations\n", ct->n_avg_ham);
-
-
-  /* QMMM yes/no */
-  getline(&line2, &len, f);
-  if (strstr(line2, "QMMM") || strstr(line2, "qmmm") || strstr(line2, "QM/MM") || strstr(line2, "qm/mm")) {
-    ct->qmmm = 1;
-    ct->esp_scaling_factor = 1.;
-    PRINTF("QM/MM calculation - the charge-transfer hamiltonian affected by the electric field\n");
-  } else {
-    if (strstr(line2, "QMG") || strstr(line2, "qmg")) {
+  if(searchkey(lines, input, "extchrmode",value, 0)){
+    if(strcmp(value,"vacuo")==0){
+      ct->qmmm = 0;
+      PRINTF("\"in vacuo\" calculation - no QM/MM\n");
+    }else if(strcmp(value,"qmmm")==0){
+      ct->qmmm = 1;
+      PRINTF("QM/MM calculation - the charge-transfer hamiltonian affected by the electric field\n");
+    } else if(strcmp(value,"list")==0){ //formally QMG  
       ct->qmmm = 2;
-      ct->esp_scaling_factor = 1.;
-      PRINTF("QM/MM calculation - the list of MM atoms will be read from file charge-transfer.ndx\n");
+      PRINTF("QM/MM calculation - the list of MM atoms will be read from file charge-transfer.ndx\n THIS HAS TO BE TESTED FIRST");
+      exit(-1);
       /* read the file "charge-transfer.ndx" here! */
       ct_get_index(&mm_list_size, &mm_list);
       //for (i=0; i<mm_list_size; i++) PRINTF(" %d", mm_list[i]); PRINTF("\n");
+    } else if(strcmp(value,"pme")==0){
+      ct->qmmm = 3;
+      PRINTF("QM/MM calculation with particle--mesh Ewald summation\n");
     } else {
-      if (strstr(line2, "QMS") || strstr(line2, "qms")) {
-        ct->qmmm = 1;
-        fscanf(f, "%lf\n", &(ct->esp_scaling_factor));
-        PRINTF("QM/MM calculation - the electrostatic interaction with MM atoms will be attenuated\n");
-        PRINTF("                      by a factor of %f\n", ct->esp_scaling_factor);
-      } else {
-        if (strstr(line2, "QME") || strstr(line2, "qme")) {
-	  ct->qmmm = 3;
-	  ct->esp_scaling_factor = 1.;
-	  PRINTF("QM/MM calculation with particle--mesh Ewald summation\n");
-	} else {
-	  if (strstr(line2, "QES") || strstr(line2, "qes")) {
-	    ct->qmmm = 3;
-	    fscanf(f, "%lf\n", &(ct->esp_scaling_factor));
-	    PRINTF("QM/MM calculation with particle--mesh Ewald summation\n");
-            PRINTF(" - the electrostatic interaction with MM atoms will be attenuated by a factor of %f\n", ct->esp_scaling_factor);
-	  } else {
-	    ct->qmmm = 0;
-	    ct->esp_scaling_factor = 1.;
-	    PRINTF("\"in vacuo\" calculation - no QM/MM\n");
-	  }
-	}
-      }
-    }
-  }
-  /* external electric field */
-  getline(&line2, &len, f);
-  if (strstr(line2, "EXF") || strstr(line2, "ExF") || strstr(line2, "exf")) {
-    fscanf(f, "%lf %lf %lf\n", &(ct->efield[0]),  &(ct->efield[1]), &(ct->efield[2])); //direction
-    //ct->efield /= dnorm(ct->efield);
-    dsvmul(1/dnorm(ct->efield),ct->efield,ct->efield);
-    fscanf(f, "%lf\n", &magnitude);  
-    dsvmul(magnitude,ct->efield,ct->efield);
-    PRINTF("external field applied: direction = %lf %lf %lf \n magnitude[V/cm]: %lf \n", ct->efield[0]/dnorm(ct->efield) ,ct->efield[1]/dnorm(ct->efield),ct->efield[2]/dnorm(ct->efield), dnorm(ct->efield));
-    dsvmul(1/(HARTREE_TO_EV * 10000000*NM_TO_BOHR), ct->efield, ct->efield); // efield conversion from V/cm=eV/(e*cm) to Hartree/(e*Bohr)
-    PRINTF(" magnitude[Hartree/(e*Bohr)] = %lf \n ", dnorm(ct->efield));
-  } else {
-    clear_dvec(ct->efield);
-    PRINTF("no external field applied\n");
-  }
-  if (ct->jobtype != ctePARAMETERS && ct->jobtype != cteNEGFLORENTZ && ct->jobtype != cteNEGFLORENTZNONSCC &&
-      ct->jobtype != cteESP && ct->jobtype != cteTDA) {
-  /* electronic polarization */
-    getline(&line2, &len, f);
-    if (strstr(line2, "IMP") || strstr(line2, "Imp") || strstr(line2, "imp")) {
-      ct->do_epol=1;
-      PRINTF("implicit electronic polarization applied\n");
-    } else {
-      ct->do_epol=0;
-      PRINTF("no electronic polarization\n");
-    }
-  /* self-interaction correction yes or no */
-    getline(&line2, &len, f);
-    if (strstr(line2, "SIC") || strstr(line2, "sic")) {
-      fscanf(f, "%lf\n", &(ct->sic));
-      PRINTF("Naive self-interaction correction applied, second-order term scaled by factor %f\n", ct->sic);
-
-    } else {
-      ct->sic = 1.0;
-      PRINTF("No self-interaction correction\n");
-    }
-    getline(&line2, &len, f);
-    if (strstr(line2, "L_I") || strstr(line2, "l_i")) {
-      PRINTF("Emulation of inner-sphere reorganization energy applied\n");
-      ct->do_lambda_i = 1;
-    } else if (strstr(line2, "LIQM")){ //adding QM forces to MD to obtain L_I
-      PRINTF("Emulation of inner-sphere reorganization by adding DFTB-QM forces to the force field\n");
-      ct->do_lambda_i = 2;
-      if (ct->jobtype == cteNOMOVEMENT && ct->interval != 1 ) {
-        ct->interval=1;
-        PRINTF("Application of internal relaxation makes only sense if QM calculations are performed every step: ct->interval was set to 1");
-      }
-    } else if (strstr(line2, "LQM")){
-      PRINTF("Emulation of inter- and intra-site relaxation by adding DFTB-QM forces to the force field\n");
-      ct->do_lambda_i = 3;
-      if (ct->jobtype == cteNOMOVEMENT && ct->interval != 1 ) {
-        ct->interval=1;
-        PRINTF("Application of relaxation makes only sense if QM calculations are performed every step: ct->interval was set to 1");
-      }
-    } else {
-      PRINTF("No inner-sphere reorganization energy\n");
-      ct->do_lambda_i = 0;
-    }
-  } else {
-    ct->sic = 1.0;
-  }
-  //if (line!=NULL) free(line);
-  fscanf(f, "%d\n", &(ct->sitetypes));
-  PRINTF("There are %d different type(s) of sites\n", ct->sitetypes);
-  snew(ct->sitetype, ct->sitetypes);
- 
-  /////* read in site specification */////
-  for(i = 0; i < ct->sitetypes; i++) {
-    fscanf(f, "%s\n", sitespecdat);
-    f2 = fopen(sitespecdat, "r");
-    if (f2 == NULL) {
-      PRINTF("File %s not accessible, exiting!\n", sitespecdat);
+      PRINTF("Didn't understand treatment of external charges (extcharmode).\n");
       exit(-1);
     }
-    PRINTF("Site parameters are read in from %s \n", sitespecdat);
-    fscanf(f2, "%d\n", &(ct->sitetype[i].atoms));
+  }else{
+    ct->qmmm = 0;
+    PRINTF("\"in vacuo\" calculation - no QM/MM\n");
+  }
+  if (searchkey(lines, input, "espscaling",value, 0)){
+    ct->esp_scaling_factor = atof(value);
+    PRINTF("the electrostatic interaction with MM atoms will be attenuated by a factor of %f\n", ct->esp_scaling_factor);
+  }else{
+    ct->esp_scaling_factor=1.0;
+  }
+  if (searchkey(lines, input, "efield",value, 0)){
+    ptr = strtok(value, " ");
+    for (i=0; i<3 ;i++){
+      if(ptr==NULL){
+        PRINTF("TOO FEW ARGUMENTS FOR EFIELD\n");
+        exit(-1);
+      }
+      ct->efield[i]= atof(ptr);
+      ptr = strtok(NULL, " ");
+    }
+    PRINTF("electric field applied: direction = %lf %lf %lf \n  magnitude[V/cm]: %lf \n",
+            ct->efield[0]/dnorm(ct->efield) ,ct->efield[1]/dnorm(ct->efield),ct->efield[2]/dnorm(ct->efield), dnorm(ct->efield));
+  }else{
+    for (i=0; i<3 ;i++)
+      ct->efield[i]= 0.0;
+  }
+
+
+  /* read in job-specific stuff */
+
+  searchkey(lines, input, "jobtype",value, 1);
+
+  if (strcmp(value,"scc")==0) {
+    ct->jobtype = cteSCCDYNAMIC;
+    PRINTF("Fully coupled electron-ion dynamics\n");
+  } else if (strcmp(value,"adi")==0) {
+    ct->jobtype = cteADIABATIC;
+    PRINTF("Adiabatic Born-Oppenheimer (SCF) dynamics of the hole\n");
+  } else if (strcmp(value,"bod")==0) { //JJK
+    ct->jobtype=cteBORNOPPENHEIMER;
+    PRINTF("Born-Oppenheimer dynamics with explicit following of the wave function\n");
+  } else if (strcmp(value,"non")==0) {
+    ct->jobtype = cteNONSCCDYNAMIC;
+    PRINTF("Uncoupled dynamics of the hole - w/o the polarization of solvent\n");
+  } else if (strcmp(value,"par")==0) {
+    ct->jobtype = ctePARAMETERS;
+    PRINTF("Calculation of charge-transfer parameters.\n");
+  } else if (strcmp(value,"adn")==0) {
+    ct->jobtype = cteADNONSCC; // adiabatic non-self-consistent-charges
+    PRINTF("Adiabatic Born-Oppenheimer (SCF) dynamics of the hole w/o the polarization of solvent\n");
+  } else if (strcmp(value,"nom")==0) {
+    ct->jobtype = cteNOMOVEMENT;
+    PRINTF("Stationary charge, calculation of all contributions to hamiltonian\n");
+  } else if (strcmp(value,"sfh")==0) {
+    ct->jobtype = cteSURFACEHOPPING;
+    PRINTF("Surface hopping between adiabatic surfaces, diabatic limit\n");
+  } else if (strcmp(value,"fer")==0) {
+    ct->jobtype = cteFERMI;
+    PRINTF("Dynamics with Fermi-distribution-based combination of adiabatic states\n");
+  } else if (strcmp(value,"fad")==0) {
+    ct->jobtype = cteFERMIADIABATIC;
+    PRINTF("Dynamics of the adiabatic ground state obtained from the Fermi-distribution-based combination\n");
+  } else if (strcmp(value,"fsh")==0) {
+    ct->jobtype = cteFERMISFHOPPING;
+    PRINTF("Surface hopping between adiabatic states obtained from the Fermi-distribution-based combination, diabatic limit\n");
+  } else if (strcmp(value,"tfs")==0) {
+    ct->jobtype = cteTULLYFEWESTSWITCHES;
+    PRINTF("Tully's fewest switches surface hopping between adiabatic states from Fermi-dist. combination\n");
+  } else if (strcmp(value,"tfl")==0) {
+    ct->jobtype = cteTULLYLOC;
+    PRINTF("Tully's fewest switches surface hopping adapted for systems with localized, spatially spread-out adiab. states \n");
+  } else if ((strcmp(value,"per")==0 || strcmp(value,"ped")==0)) {
+    ct->jobtype = ctePERSICOSFHOPPING;
+    PRINTF("Persico's locally diabatic surface hopping between adiabatic states from Fermi-dist. combination\n");
+    } if (strcmp(value,"ped")==0) {
+      ct->decoherence = 1;
+      PRINTF(" - correction for quantum decoherence switched on!\n");
+  } else if (strcmp(value,"ngl")==0) {
+    ct->jobtype = cteNEGFLORENTZ;
+    PRINTF("Calculation of electric current with non-equlibrium Green's function approach + Lorentzian functions\n");
+    PRINTF(" - populations of molecules mapped onto MD charges (self-consistent calculation)\n");
+  } else if (strcmp(value,"ngn")==0) {
+    ct->jobtype = cteNEGFLORENTZNONSCC;
+    PRINTF("Calculation of electric current with non-equlibrium Green's function approach + Lorentzian functions\n");
+    PRINTF(" - no mapping of charges to MD (non-self-consistent calculation)\n");
+  } else if (strcmp(value,"esp")==0) {
+    ct->jobtype = cteESP;
+    PRINTF("Calculation of electrostatic potential only\n");
+  } else if (strcmp(value,"tda")==0) {
+    ct->jobtype = cteTDA;
+    PRINTF("Calculation of Tunneling matrix elements through bridge.\n");
+  } else if ((strcmp(value,"gfs")==0) || strcmp(value,"gfd")==0){
+    ct->jobtype = ctePREZHDOSFHOPPING;
+    printf("Global Flux Surface Hopping\n");
+    if (strcmp(value,"gfd")==0) {
+      ct->decoherence = 1;
+      PRINTF(" - correction for quantum decoherence switched on!\n");
+    }
+  }
+
+  if(searchkey(lines, input, "nstqm",value, 0)){
+    ct->interval = atoi(value);
+    if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNOMOVEMENT || ct->jobtype == cteESP || ct->jobtype == cteTDA){
+      PRINTF("Performing QM calculation every %d steps.\n", ct->interval);
+    } else if (ct->interval > 1){
+      PRINTF("WARNING: specified nstqm > 1, which will be ignored in the specified jobtype.\n");
+    }
+  }else{
+    ct->interval = 1;
+  }
+
+  if(searchkey(lines, input, "tfermi",value, 0)){
+    if (ct->jobtype == cteFERMI || ct->jobtype == cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype == cteFERMISFHOPPING || ct->jobtype == cteTULLYFEWESTSWITCHES
+        || ct->jobtype == ctePERSICOSFHOPPING) {
+      ct->telec=atof(value);
+      ct->fermi_kt = BOLTZMANN_HARTREE_KELVIN * ct->telec;
+      PRINTF("Electronic temperature for Fermi distribution is %f K, kT(elec) = %f a.u.\n", ct->telec, ct->fermi_kt);
+    }else{
+      PRINTF("WARNING: specified fermi temperature (tfermi), which will be ignored in the specified jobtype.\n");
+    }
+  }
+
+  if(searchkey(lines, input, "nstaverage",value, 0)){
+    ct->n_avg_ham = atoi(value);
+    PRINTF("WARNING: averaging hamilton over %d steps to assimilate fast non-classical vibrations\n This is just for testing, so take care.\n", ct->n_avg_ham);
+  }else{
+    ct->n_avg_ham = 1;
+  }
+  if(searchkey(lines, input, "epol",value, 0)){
+    if(strcmp(value,"imp")==0){
+      ct->do_epol=1;
+      PRINTF("implicit electronic polarization applied (Born model)\n");
+    }else{
+      PRINTF("Did not understand electronic polarization model. Use IMP for born-like implicit electronic polarization.\n");
+      exit(-1);
+    }
+    if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
+      ct->jobtype == cteESP || ct->jobtype == cteTDA) {
+      PRINTF("WARNING: specified electronic polarization, which makes only sense for jobtypes with actual charge in the system.\n");
+    }
+  }else{
+    ct->do_epol=0;  
+  }
+  if(searchkey(lines, input, "sic",value, 0)){
+      ct->sic=atof(value);
+      PRINTF("Naive self-interaction correction applied, second-order term scaled by factor %f\n", ct->sic);
+      if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
+        ct->jobtype == cteESP || ct->jobtype == cteTDA) {
+        PRINTF("WARNING: specified self interaction corrction (SIC), which makes only sense for jobtypes with actual charge in the system.\n");
+      }
+  }else{
+    ct->sic =0.0;
+    PRINTF("Omitting second-order terms.\n");
+  }
+  if(searchkey(lines, input, "internalrelax",value, 0)){
+    if(strcmp(value,"parameter")==0){ // former L_I
+      ct->do_lambda_i = 1;
+      PRINTF("Emulation of inner-sphere reorganization energy with precalculated parameter.\n");
+    }else if(strcmp(value,"onsite")==0){ // former LIQM
+      ct->do_lambda_i = 2;
+      PRINTF("Emulation of internal relaxation by adding DFTB-QM forces to the force field\n");
+    }else if(strcmp(value,"full")==0){  // former LQM
+      ct->do_lambda_i = 3;
+      PRINTF("Emulation of inter- and intra-site relaxation by adding DFTB-QM forces to the force field\n");
+    }else{
+      PRINTF("Did not understand relaxation model.\n");
+      exit(-1);
+    }
+    if(ct->interval!=1){
+      PRINTF("Application of internal relaxation makes only sense if QM calculations are performed every step\n");
+      exit(-1);
+    }
+    for(i = 0; i < ct->pool_size; i++){
+      if(ct->do_lambda_i > 0 && ct->pool_site[i].do_scc!=0){
+        PRINTF("QM-forces were designed for DFTB1 formalism but you want to use DFTB2");
+        exit(-1);
+      }
+    }
+    if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
+      ct->jobtype == cteESP || ct->jobtype == cteTDA) {
+      PRINTF("WARNING: specified internal relaxation, which makes only sense for jobtypes with actual charge in the system.\n");
+    }
+  }
+
+  if(searchkey(lines, input, "deltaqmode",value, 0)){
+    if(strcmp(value,"mulliken")==0){
+      ct->delta_q_mode=0;
+      PRINTF("Representing the charge carrier with Mulliken charges.");
+    }else if(strcmp(value,"resp")==0){
+      ct->delta_q_mode=1;
+      PRINTF("Representing the charge carrier with RESP charges.");
+    }else{
+      PRINTF("UNKOWN OPTION FOR DELTAQMODE");
+      exit(-1);
+    }
+  }else{
+      ct->delta_q_mode=0;
+      PRINTF("Representing the charge carrier with Mulliken charges.");
+  }
+
+
+
+  /* build QM system */
+
+  /* read in site specifications*/
+  searchkey(lines, input, "nsitetypes",value, 1);
+  ct->sitetypes=atoi(value);
+  snew(ct->sitetype, ct->sitetypes);
+  PRINTF("There are %d different type(s) of sites\n", ct->sitetypes);
+
+  searchkey(lines, input, "typefiles",value, 1);
+  ptr = strtok(value, " ");
+  for (i=0; i<ct->sitetypes ;i++){
+    if(ptr==NULL){
+      PRINTF("TOO FEW ARGUMENTS FOR TYPEFILES\n");
+      exit(-1);
+    }
+    strcpy(sitespecdat[i],ptr);
+    ptr = strtok(NULL, " ");
+  }
+
+  for (i=0; i<ct->sitetypes ;i++){
+    f2 = fopen(sitespecdat[i], "r");
+    if (f2 == NULL) {
+      PRINTF("File %s not accessible, exiting!\n", sitespecdat[i]);
+      exit(-1);
+    }
+    PRINTF("Site parameters are read in from %s \n", sitespecdat[i]);
+    //get length of file
+    lines2=0;
+    while(!feof(f2)){
+      ch = fgetc(f2);
+      if(ch == '\n'){lines2++;}
+    }
+    fclose(f2);
+    f2=fopen(sitespecdat[i],"r");
+    
+    //convert keywords to lowercase for better handling
+    for (line=0; line<lines2; line++){
+      ch=fscanf(f2, " %[^= \t] = %[^=\n\t] \n", input2[line][0],  input2[line][1]);
+      if (ch != 2 ){printf("READING ERROR in line %d\n", line+1); exit(0);}
+      len = strlen(input2[line][0]);
+      for(j=0; j<len; j++){
+        input2[line][0][j]=tolower((unsigned char)input2[line][0][j]);
+      }
+      // check input file
+      j=1;
+      for (k=0; k< sizeof(possiblekeys2)/sizeof(possiblekeys2[0]); k++){
+        if(strcmp(input2[line][0],possiblekeys2[k][0])==0)
+          j=0;
+      }
+      if (j) {
+        PRINTF("KEYWORD NOT KNOWN: %s\nALLOWED KEYWORDS:\n", input2[line][0]);
+        for (k=0; k< sizeof(possiblekeys2)/sizeof(possiblekeys2[0]); k++){
+          PRINTF("%20s:  %s\n",possiblekeys2[k][0], possiblekeys2[k][1]);
+        }
+        exit(-1);
+      }
+    }
+    fclose(f2);
+    
+    // print copy of the input file
+    printf("INPUT FILE %s:\n", sitespecdat[i]);
+    for (line=0; line<lines2; line++){
+      printf("%s = %s\n", input2[line][0], input2[line][1]);
+    }
+
+    searchkey(lines2, input2, "natoms",value, 1);
+    ct->sitetype[i].atoms=atoi(value);
     snew(ct->sitetype[i].atom, ct->sitetype[i].atoms);
     snew(ct->sitetype[i].atomtype, ct->sitetype[i].atoms);
-    fscanf(f2, "%d\n", &(ct->sitetype[i].nel));
-    fscanf(f2, "%d\n", &(ct->sitetype[i].norb));
-    fscanf(f2, "%lf\n",&(ct->sitetype[i].radius)); //radius in nm
-    fscanf(f2, "%d\n", &(ct->sitetype[i].bonds));
-    PRINTF("Sitetype %d found to have %d bond(s) between the QM and the MM region \n", i+1, ct->sitetype[i].bonds );
-    snew(ct->sitetype[i].QMLA, ct->sitetype[i].bonds);  
-    snew(ct->sitetype[i].MMLA, ct->sitetype[i].bonds);
-    snew(ct->sitetype[i].nochrs, ct->sitetype[i].bonds);
-    snew(ct->sitetype[i].addchrs, ct->sitetype[i].bonds);
-    snew(ct->sitetype[i].extracharge, ct->sitetype[i].bonds);
-    snew(ct->sitetype[i].nochr, ct->sitetype[i].bonds);
-    snew(ct->sitetype[i].addchr, ct->sitetype[i].bonds);
-    ct->sitetype[i].type = i;
-    for(j = 0; j < ct->sitetype[i].bonds; j++){
-      fscanf(f2, "%d\n", &(ct->sitetype[i].nochrs[j]));
-      snew(ct->sitetype[i].nochr[j], ct->sitetype[i].nochrs[j]);
-      for(k = 0; k < ct->sitetype[i].nochrs[j]; k++){
-        fscanf(f2, "%s\n", ct->sitetype[i].nochr[j][k]);
-        PRINTF("Ignoring charges on %s\n",ct->sitetype[i].nochr[j][k]);
-      }
-      fscanf(f2, "%d\n", &(ct->sitetype[i].addchrs[j]));
-      snew(ct->sitetype[i].addchr[j], ct->sitetype[i].addchrs[j]);
-      for(k = 0; k < ct->sitetype[i].addchrs[j]; k++){
-        fscanf(f2, "%s\n", ct->sitetype[i].addchr[j][k]);
-      }
-     fscanf(f2, "%lf\n", &(ct->sitetype[i].extracharge[j]));
+    searchkey(lines2, input2, "nelectrons",value, 1);
+    ct->sitetype[i].nel = atoi(value);
+    searchkey(lines2, input2, "nallorbitals",value, 1);
+    ct->sitetype[i].norb = atoi(value);
+    if(searchkey(lines2, input2, "radius",value, 0)){
+      ct->sitetype[i].radius = atof(value);
+    }else if (ct->do_epol==1){
+      PRINTF("RADIUS OF SITE NEEDED FOR BORN POLARIZATION MODEL\n");
+      exit(-1);
     }
-    //fscanf(f2, "%d\n", &(ct->sitetype[i].connections));
+    ct->sitetype[i].type = i;
+    if(searchkey(lines2, input2, "nqmmmbonds",value, 0)){
+      ct->sitetype[i].bonds = atoi(value);
+      PRINTF("Sitetype %d found to have %d bond(s) between the QM and the MM region \n", i+1, ct->sitetype[i].bonds );
+
+      if (ct->sitetype[i].bonds > 0){
+        snew(ct->sitetype[i].QMLA, ct->sitetype[i].bonds);
+        snew(ct->sitetype[i].MMLA, ct->sitetype[i].bonds);
+        snew(ct->sitetype[i].nochrs, ct->sitetype[i].bonds);
+        snew(ct->sitetype[i].addchrs, ct->sitetype[i].bonds);
+        snew(ct->sitetype[i].extracharge, ct->sitetype[i].bonds);
+        snew(ct->sitetype[i].nochr, ct->sitetype[i].bonds);
+        snew(ct->sitetype[i].addchr, ct->sitetype[i].bonds);
+  
+        searchkey(lines2, input2, "nignorechr",value, 1);
+        ptr = strtok(value, " ");
+        for (j=0; j<ct->sitetype[i].bonds ;j++){
+          if(ptr==NULL){
+            PRINTF("TOO FEW ARGUMENTS FOR NIGNORECHR\n");
+            exit(-1);
+          }
+          ct->sitetype[i].nochrs[j]= atoi(ptr);
+          snew(ct->sitetype[i].nochr[j], ct->sitetype[i].nochrs[j]);
+          ptr = strtok(NULL, " ");
+        }
+        searchkey(lines2, input2, "nameignorechr",value, 1);
+        ptr = strtok(value, " ");
+        for (j=0; j<ct->sitetype[i].bonds ;j++){
+          for (k=0; k<ct->sitetype[i].nochrs[j] ;k++){
+            if(ptr==NULL){
+              PRINTF("TOO FEW ARGUMENTS FOR NAMEIGNORECHR\n");
+              exit(-1);
+            }
+            strcpy(ct->sitetype[i].nochr[j][k],ptr);
+            PRINTF("Ignoring charges on %s\n",ct->sitetype[i].nochr[j][k]);
+            ptr = strtok(NULL, " ");
+          }
+        }
+        searchkey(lines2, input2, "naddchr",value, 1);
+        ptr = strtok(value, " ");
+        for (j=0; j<ct->sitetype[i].bonds ;j++){
+          if(ptr==NULL){
+            PRINTF("TOO FEW ARGUMENTS FOR NADDCHR\n");
+            exit(-1);
+          }
+          ct->sitetype[i].addchrs[j]= atoi(ptr);
+          snew(ct->sitetype[i].addchr[j], ct->sitetype[i].addchrs[j]);
+          ptr = strtok(NULL, " ");
+        }
+        searchkey(lines2, input2, "totaladdchr",value, 1);
+        ptr = strtok(value, " ");
+        for (j=0; j<ct->sitetype[i].bonds ;j++){
+          if(ptr==NULL){
+            PRINTF("TOO FEW ARGUMENTS FOR TOTALADDCHR\n");
+            exit(-1);
+          }
+          ct->sitetype[i].extracharge[j]=atof(ptr);
+          ptr = strtok(NULL, " ");
+        }
+        searchkey(lines2, input2, "nameaddchr",value, 1);
+        ptr = strtok(value, " ");
+        for (j=0; j<ct->sitetype[i].bonds ;j++){
+          for (k=0; k<ct->sitetype[i].addchrs[j] ;k++){
+            if(ptr==NULL){
+              PRINTF("TOO FEW ARGUMENTS FOR NAMEADDCHR\n");
+              exit(-1);
+            }
+            strcpy(ct->sitetype[i].addchr[j][k],ptr);
+            ptr = strtok(NULL, " ");
+          }
+        }
+        for (j=0; j<ct->sitetype[i].bonds ;j++){
+          PRINTF("Distributing charge of %f over atoms:\n",ct->sitetype[i].extracharge[j]);
+          for (k=0; k<ct->sitetype[i].addchrs[j] ;k++){
+            PRINTF(" %s \n",ct->sitetype[i].addchr[j][k]);
+          }
+        }
+      }
+    }else{
+      ct->sitetype[i].bonds = 0;
+    }
     ct->sitetype[i].connections=0; // not yet fully implemented. can maybe done without reading in
     //PRINTF("Sitetype %d found to have %d connections to other fragments \n", i+1, ct->sitetype[i].connections );
-    snew(ct->sitetype[i].QMCA, ct->sitetype[i].connections);  
+    snew(ct->sitetype[i].QMCA, ct->sitetype[i].connections);
     snew(ct->sitetype[i].QMCN, ct->sitetype[i].connections);
     for(j=0; j<ct->sitetype[i].connections; j++)
       snew(ct->sitetype[i].QMCN[j], 2);
-    fscanf(f2, "%d\n", &(ct->sitetype[i].homos));
+    
+    searchkey(lines2, input2, "nfragorbs",value, 1);
+    ct->sitetype[i].homos=atoi(value);
+    PRINTF("Considering %d MOs per site.\n", ct->sitetype[i].homos);
     snew(ct->sitetype[i].homo, ct->sitetype[i].homos);
     snew(ct->sitetype[i].hubbard, ct->sitetype[i].homos);
     snew(ct->sitetype[i].lambda_i, ct->sitetype[i].homos);
-    for(j = 0; j < ct->sitetype[i].homos; j++)
-      fscanf(f2, "%d%lf%lf\n", &(ct->sitetype[i].homo[j]), &(ct->sitetype[i].hubbard[j]), &(ct->sitetype[i].lambda_i[j]));
-    getline(&line2, &len, f2);
-    if (strstr(line2, "END")){
-      PRINTF("Finished reading file %s \n", sitespecdat);
-    }else{
-      PRINTF("Didn't find expected 'END' keyword in file %s \n", sitespecdat);
-      exit(-1);
+    
+    searchkey(lines2, input2, "fragorbs",value, 1);
+    ptr = strtok(value, " ");
+    for(j = 0; j < ct->sitetype[i].homos; j++){
+      if(ptr==NULL){
+        PRINTF("TOO FEW ARGUMENTS FOR FRAGORBS\n");
+        exit(-1);
+      }
+      ct->sitetype[i].homo[j]=atoi(ptr);
+      ptr = strtok(NULL, " ");
     }
-    fclose(f2);
+    if(ct->sic > 0.0){
+      searchkey(lines2, input2, "hubbard",value, 1);
+      ptr = strtok(value, " ");
+      for(j = 0; j < ct->sitetype[i].homos; j++){
+        if(ptr==NULL){
+          PRINTF("TOO FEW ARGUMENTS FOR HUBBARD\n");
+          exit(-1);
+        }
+        ct->sitetype[i].hubbard[j]=atof(ptr);
+        ptr = strtok(NULL, " ");
+      }
+    }
+    if(ct->do_lambda_i==1){
+      searchkey(lines2, input2, "lambda_i",value, 1);
+      ptr = strtok(value, " ");
+      for(j = 0; j < ct->sitetype[i].homos; j++){
+        if(ptr==NULL){
+          PRINTF("TOO FEW ARGUMENTS FOR LAMBDA_I\n");
+          exit(-1);
+        }
+        ct->sitetype[i].lambda_i[j]=atof(ptr);
+        ptr = strtok(NULL, " ");
+      }
+    }
+    if(ct->delta_q_mode==1){
+      snew(ct->sitetype[i].delta_q, ct->sitetype[i].homos);
+        snew(ct->sitetype[i].delta_q[0], ct->sitetype[i].homos* ct->sitetype[i].atoms);
+      for(j = 1; j < ct->sitetype[i].homos; j++)
+        ct->sitetype[i].delta_q[j]=ct->sitetype[i].delta_q[0]+j*ct->sitetype[i].atoms;
+      searchkey(lines2, input2, "dqresp",value, 1);
+      ptr = strtok(value, " ");
+      for(j = 0; j < ct->sitetype[i].homos; j++){
+        for(k = 0; k < ct->sitetype[i].atoms; k++){
+          if(ptr==NULL){
+            PRINTF("TOO FEW ARGUMENTS FOR DQRESP\n");
+            exit(-1);
+          }
+          ct->sitetype[i].delta_q[j][k]=atof(ptr);
+          ptr = strtok(NULL, " ");
+        }
+      }
+    }
   }
 
-
-  /////* construct pool of sites according to sitetypes */////
-
-  /* pointers to constant values point to the same address. site specific values are allocated after copying sitetype to site */
-  /* active sites are selected from this pool */
-  fscanf(f, "%d", &(ct->sites));
-  fscanf(f, "%d", &(ct->pool_size));
-  if(ct->sitetypes>1 && (ct->pool_size != ct->sites)){
-    printf("Adaptive QM zone works only if every site is the same.\n");
-    exit(-1);
+  /* read in sites*/
+  searchkey(lines, input, "nsites",value, 1);
+  ct->pool_size=atoi(value);
+  ct->sites=ct->pool_size;
+  if(searchkey(lines, input, "zonesize",value, 0)){
+    ct->sites=atoi(value);
+    if(searchkey(lines, input, "optimizezone",value, 0)){
+      if(strcmp(value,"yes")==0||strcmp(value,"on")==0||strcmp(value,"1")==0){
+        ct->opt_QMzone=1;
+        PRINTF("Will search pool for energetically best site to start. Overwriting start wavefunction\n");
+      }else if (!(strcmp(value,"no")==0||strcmp(value,"off")==0||strcmp(value,"0")==0)){
+        PRINTF("Did not understand optimizezone option.\n");
+        exit(-1);
+      }
+      if (ct->pool_size<=ct->sites) {
+        PRINTF("pool of possible sites has to be larger then the QM zone\n");
+        exit(-1);
+      }
+    }
+    if(ct->sitetypes>1 && (ct->pool_size != ct->sites)){
+      printf("Adaptive QM zone works only if every site is the same.\n");
+      exit(-1);
+    }
   }
   if (ct->sites == ct->pool_size){
     PRINTF("QM system consists of %d sites:\n", ct->sites);
@@ -594,15 +864,41 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   snew(ct->site, ct->sites);
   snew(ct->indFO, ct->sites);
   snew(ct->pool_site,ct->pool_size);
+
+  searchkey(lines, input, "sites",value, 1);
+  ptr = strtok(value, " ");
   for(i = 0; i < ct->pool_size; i++){
-    fscanf(f, "%d %d %d\n", &(ct->pool_site[i].resnr), &(ct->pool_site[i].type), &(ct->pool_site[i].do_scc)); 
-    if(ct->do_lambda_i > 0 && ct->pool_site[i].do_scc!=0){
-      PRINTF("QM-forces were designed for DFTB1 formulism but you want to use DFTB2");
+    if(ptr==NULL){
+      PRINTF("TOO FEW ARGUMENTS FOR SITES\n");
       exit(-1);
     }
-    ct->pool_site[i].type--; //for convinient numbering in charge-transfer.dat from 1 to #_diffrent_sites
-//    ct->pool_site[i].resnr--; //apparently residues are numbered in gromacs starting from 0 but written out as starting from 1  CHANGED IN GROMACS4.6
+    ct->pool_site[i].resnr=atoi(ptr);
+    //ct->pool_site[i].resnr--; //apparently residues are numbered in gromacs starting from 0 but written out as starting from 1  CHANGED IN GROMACS4.6
+    ptr = strtok(NULL, " ");
   }
+  searchkey(lines, input, "sitetypes",value, 1);
+  ptr = strtok(value, " ");
+  for(i = 0; i < ct->pool_size; i++){
+   if(ptr==NULL){
+     PRINTF("TOO FEW ARGUMENTS FOR SITETYPES\n");
+     exit(-1);
+    }
+    ct->pool_site[i].type=atoi(ptr);
+    ct->pool_site[i].type--; //for convinient numbering in charge-transfer.dat from 1 to #_diffrent_sites
+    ptr = strtok(NULL, " ");
+  }
+  searchkey(lines, input, "sitescc",value, 1);
+  ptr = strtok(value, " ");
+  for(i = 0; i < ct->pool_size; i++){
+    if(ptr==NULL){
+      PRINTF("TOO FEW ARGUMENTS FOR SITESCC\n");
+      exit(-1);
+    }
+    ct->pool_site[i].do_scc=atoi(ptr);
+    ptr = strtok(NULL, " ");
+  }
+
+  /* build sites according to sitetypes */
   for(i = 0; i < ct->pool_size; i++) {
     snew(ct->pool_site[i].nochrs , ct->sitetype[ct->pool_site[i].type].bonds);
     snew(ct->pool_site[i].addchrs , ct->sitetype[ct->pool_site[i].type].bonds);
@@ -614,18 +910,23 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     }
     snew(ct->pool_site[i].homo, ct->sitetype[ct->pool_site[i].type].homos);
     snew(ct->pool_site[i].lambda_i, ct->sitetype[ct->pool_site[i].type].homos);
-     
+
     l = ct->pool_site[i].resnr; // resnr is parked in l. otherwise the resnr would get lost by copying sitetype to site.
     m = ct->pool_site[i].do_scc; // do_SCC is parked in m. otherwise the resnr would get lost by copying sitetype to site.
     ct->pool_site[i]= ct->sitetype[ct->pool_site[i].type]; //not sure if copying is that easy  
     ct->pool_site[i].resnr = l;
     ct->pool_site[i].do_scc = m;
-    
+
     /* stuff that is unique for each site */
-    snew(ct->pool_site[i].delta_q, ct->sitetype[ct->pool_site[i].type].homos);  
+    snew(ct->pool_site[i].delta_q, ct->sitetype[ct->pool_site[i].type].homos);
       snew(ct->pool_site[i].delta_q[0], ct->sitetype[ct->pool_site[i].type].homos* ct->sitetype[ct->pool_site[i].type].atoms);
     for(j = 1; j < ct->pool_site[i].homos; j++)
       ct->pool_site[i].delta_q[j]=ct->pool_site[i].delta_q[0]+j*ct->pool_site[i].atoms;
+    if (ct->delta_q_mode==1){
+      for(j = 0; j < ct->pool_site[i].homos; j++)
+        for(k = 0; k < ct->pool_site[i].atoms; k++)
+          ct->pool_site[i].delta_q[j][k]=ct->sitetype[ct->pool_site[i].type].delta_q[j][k];
+    }
     snew(ct->pool_site[i].overlap, ct->pool_site[i].homos);
       snew(ct->pool_site[i].overlap[0], SQR(ct->pool_site[i].homos));
       for(j = 0; j < ct->pool_site[i].homos; j++)
@@ -642,7 +943,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     snew(ct->pool_site[i].modif_extcharge , ct->sitetype[ct->pool_site[i].type].bonds);
     for(j = 0; j < ct->sitetype[ct->pool_site[i].type].bonds ; j++){
       snew(ct->pool_site[i].modif_extcharge[j], ct->sitetype[ct->pool_site[i].type].addchrs[j]);
-      for (k=0; k <  ct->sitetype[ct->pool_site[i].type].addchrs[j]; k++) 
+      for (k=0; k <  ct->sitetype[ct->pool_site[i].type].addchrs[j]; k++)
         ct->pool_site[i].modif_extcharge[j][k]=-1; // -1 equals undetermined
     }
     snew(ct->pool_site[i].QMCA , ct->sitetype[ct->pool_site[i].type].connections);
@@ -650,7 +951,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     for(j=0; j<ct->sitetype[ct->pool_site[i].type].connections; j++)
       snew(ct->pool_site[i].QMCN[j], 2);
     snew(ct->pool_site[i].com, 3);
-//PRINTF("DATA %d %d %d %s %lf %d %d %d %lf %lf \n", ct->pool_site[i].atoms, ct->pool_site[i].bonds,ct->pool_site[i].nochrs[0],ct->pool_site[i].nochr[0][0],ct->pool_site[i].extracharge[0],ct->pool_site[i].addchrs[0],ct->pool_site[i].homos,ct->pool_site[i].homo[0],ct->pool_site[i].hubbard[0],ct->pool_site[i].lambda_i[0]);
+    //PRINTF("DATA %d %d %d %s %lf %d %d %d %lf %lf \n", ct->pool_site[i].atoms, ct->pool_site[i].bonds,ct->pool_site[i].nochrs[0],ct->pool_site[i].nochr[0][0],ct->pool_site[i].extracharge[0],ct->pool_site[i].addchrs[0],ct->pool_site[i].homos,ct->pool_site[i].homo[0],ct->pool_site[i].hubbard[0],ct->pool_site[i].lambda_i[0]);
   }
 
   /* get the number of extcharges */
@@ -673,7 +974,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
         site->extcharges = top_global->natoms - site->atoms;
         for (j = 0; j <site->bonds ; j++)
           site->extcharges -= site->nochrs[j];
-        
+
         if (i<ct->sites){//complex has only ct->sites sites
           ct->extcharges_cplx -= site->atoms;
           for (j = 0; j <site->bonds ; j++)
@@ -695,14 +996,19 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     for (i=0; i<ct->pool_size; i++)
       snew(ct->pool_site[i].extcharge, top_global->natoms);// we allocate array a little bit larger than needed (natoms instead of extcharges) and let remaining enrtries blank. This way we can build the intersection of these arrays in order to find the extcharges of the complex
   }
- 
+
   /* set the first ct->sites of the pool active */
   for(i=0; i<ct->pool_size; i++)
     ct->pool_site[i].active = i<ct->sites ? 1:0 ;
   for(i=0; i<ct->sites; i++)
     ct->site[i]=ct->pool_site[i];
 
+  // end build QM system
+
+
+
   /* set arrays regarding the complex */
+
   ct->dim=0;
   ct->atoms_cplx=0;
   counter = 0;  
@@ -727,6 +1033,8 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     for(j = 1; j < ct->dim; j++)
       ct->hamiltonian[j] = ct->hamiltonian[0] + j * ct->dim;
 
+  snew(ct->fo_shift, ct->dim);
+
   //averaging out fast oscillation of the hamiltonian. H[dim][dim][time] 
   snew(ct->hamiltonian_history, ct->dim);
     for (i = 0; i < ct->dim; i++){
@@ -736,6 +1044,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
       }
     }
 
+  /* remaining allocations */
   snew(ct->hamiltonian_mod, ct->dim);
   snew(ct->hamiltonian_adiab, SQR(ct->dim));
   snew(ct->ev_adiab, ct->dim);
@@ -750,22 +1059,6 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     for(j = 1; j < ct->dim; j++)
       ct->hubbard[j] = ct->hubbard[0] + j * ct->dim;
 
-  /* set constant hubbard elements */
-  counter=0;
-  for(i = 0; i < ct->sites; i++){
-    for(j = 0; j < ct->site[i].homos; j++){
-      for(k = 0; k < ct->site[i].homos - j; k++ ){ 
-        ct->hubbard[counter][counter+k] = ct->sic * (ct->site[i].hubbard[j] + ct->site[i].hubbard[k])*0.5; //variation of MO-energy if an other orbital on this site is getting charged. 
-        if(ct->do_epol==1)
-          ct->hubbard[counter][counter+k] -= 1.0/(2.0*ct->site[i].radius*NM_TO_BOHR)*(1.0-1.0/EPSILON_OP); //influence of electronic polarization
-        ct->hubbard[counter+k][counter] = ct->hubbard[counter][counter+k];
-      }
-      if (ct->do_lambda_i == 1) {
-        ct->hubbard[counter][counter] -= ct->site[i].lambda_i[j];
-      }
-      counter++;
-    }
-  }
 
   /* Runge-Kutta related */
   ct->rk_neq = 2 * ct->dim;
@@ -782,65 +1075,120 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   snew(ct->rk_work, ct->rk_lenwrk);
 
 
-  /* read in the wavefunction */
-  if (ct->jobtype != ctePARAMETERS && ct->jobtype != cteESP && ct->jobtype != cteTDA) {
-    if(ct->pool_size > ct->sites)
-      getline(&line2, &len, f);
-    if(strstr(line2, "OPT") || strstr(line2, "opt")){
-      ct->opt_QMzone=1;
-      PRINTF("Will search pool for best site to start.\n");
-    }else{
-      ct->opt_QMzone=0;
-      ct->survival = 0.0;
-      for (i=0; i<ct->dim; i++) {
-        fscanf(f, "%lf%lf\n", ct->wf + i, ct->wf + ct->dim + i);
-        ct->occupation[i] = SQR(ct->wf[i]) + SQR(ct->wf[ct->dim + i]);
-        ct->survival += ct->occupation[i];
+
+
+
+  /* shift of hamilton diagonal elements */
+  if(searchkey(lines, input, "foshift",value, 0)){
+    PRINTF("Applying shift to Hamiltonian:\n");
+    ptr = strtok(value, " ");
+    for (i=0; i<ct->dim ;i++){
+      if(ptr==NULL){
+        PRINTF("TOO FEW ARGUMENTS FOR FOSHIFT\n");
+        exit(-1);
       }
-      PRINTF("Read the wavefunction:\n");
-      for (i=0; i<ct->dim; i++)
-        PRINTF(" Re_wf[%d] = %7.4f, Im_wf[%d] = %7.4f\n", i+1, ct->wf[i], i+1, ct->wf[i + ct->dim]);
-      PRINTF("Sum of occupations = %7.5f\n", ct->survival);
+      ct->fo_shift[i]= atof(ptr);
+      ptr = strtok(NULL, " ");
+      PRINTF("  %f eV\n", ct->fo_shift[i]*HARTREE_TO_EV);
     }
   }
 
-  if (ct->jobtype == cteSCCDYNAMIC || ct->jobtype == cteNONSCCDYNAMIC || ct->jobtype == cteSURFACEHOPPING) {
-    getline(&line2, &len, f);
-    if (strstr(line2, "NIP") || strstr(line2, "nip")) {
-      PRINTF("Charge taken out of the several sites by way of negative imaginary potential,\n");
-      fscanf(f, "%d %lf\n", &(ct->neg_imag_pot), &(ct->neg_imag_pot_rate_constant));
-      PRINTF("   this will be done for %d sites, with 1/tau = %e au-1 = %f ps-1.\n",
-             ct->neg_imag_pot, ct->neg_imag_pot_rate_constant, ct->neg_imag_pot_rate_constant * PS_TO_AU);
-      snew(ct->site_neg_imag_pot, ct->neg_imag_pot);
-      snew(ct->site_annihilated_occupation, ct->neg_imag_pot);
-      for (i=0; i<ct->neg_imag_pot; i++) {
-        fscanf(f, "%d\n", ct->site_neg_imag_pot + i);
-        ct->site_neg_imag_pot[i]--;
-        ct->site_annihilated_occupation[i] = 0.0;
-        PRINTF("   site no. %d for NIP occupation removal: residue %d\n",
-          i+1, ct->site[ct->site_neg_imag_pot[i]].resnr);
+
+  /* read the wavefunction */
+  if(searchkey(lines, input, "wavefunctionreal",value, 0)){
+    PRINTF("Read the wavefunction:\n");
+    ptr = strtok(value, " ");
+    for (i=0; i<ct->dim ;i++){
+      if(ptr==NULL){
+        PRINTF("TOO FEW ARGUMENTS FOR WAVEFUNCTIONREAL\n");
+        exit(-1);
       }
-//      fscanf(f, "%lf\n", &(ct->survival_threshold));
-//      PRINTF("   and quit if the survival drops under %f.\n", ct->survival_threshold);
-    } else {
-      PRINTF("No negat. imag. potential\n");
-      ct->neg_imag_pot = 0;
+      ct->wf[i]= atof(ptr);
+      ptr = strtok(NULL, " ");
+    }
+    if(searchkey(lines, input, "wavefunctionim",value, 0)){
+      ptr = strtok(value, " ");
+      for (i=0; i<ct->dim ;i++){
+        if(ptr==NULL){
+          PRINTF("TOO FEW ARGUMENTS FOR WAVEFUNCTIONIM\n");
+          exit(-1);
+        }
+        ct->wf[ct->dim+i]= atof(ptr);
+        ptr = strtok(NULL, " ");
+      }
+    }
+    ct->survival = 0.0;
+    for (i=0; i<ct->dim; i++) {
+      PRINTF(" Re_wf[%d] = %7.4f, Im_wf[%d] = %7.4f\n", i+1, ct->wf[i], i+1, ct->wf[i + ct->dim]);
+      ct->occupation[i] = SQR(ct->wf[i]) + SQR(ct->wf[ct->dim + i]);
+      ct->survival += ct->occupation[i];
+    }
+    PRINTF("Sum of occupations = %7.5f\n", ct->survival);
+
+    if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
+      ct->jobtype == cteESP || ct->jobtype == cteTDA) {
+      PRINTF("WARNING: specified wavefunction, which makes only sense for jobtypes with actual charge in the system.\n");
     }
   }
 
-  getline(&line2, &len, f);
-  if (strstr(line2, "END")){
-    PRINTF("Finished reading file charge-transfer.dat \n");
-  }else{
-    PRINTF("Didn't find expected 'END' keyword in file charge-transfer.dat \n");
-    exit(-1);
+  if(searchkey(lines, input, "nnegimpot",value, 0)){
+    PRINTF("Charge taken out of the several FOs by way of negative imaginary potential,\n");
+    PRINTF("NEVER TESTET IN THIS VERSION. CHECK SOURCE CODE BEFORE PROCEEDING!\n");
+    exit(-1); //TODO I somehow tried to adapt this feature. However, it was initially considered for one Orbital per site and I'm not sure if it will work with several FOs per site.
+    ct->neg_imag_pot = atoi(value);
+    snew(ct->site_neg_imag_pot, ct->neg_imag_pot);
+    snew(ct->site_annihilated_occupation, ct->neg_imag_pot);
+    
+    searchkey(lines, input, "negimpotrate",value, 1);
+    ct->neg_imag_pot_rate_constant = atof(value);
+    PRINTF("   this will be done for %d FOs, with 1/tau = %e au-1 = %f ps-1.\n",
+    ct->neg_imag_pot, ct->neg_imag_pot_rate_constant, ct->neg_imag_pot_rate_constant * PS_TO_AU);
+
+    searchkey(lines, input, "negimpotfos",value, 1);
+    ptr = strtok(value, " ");
+    for (i=0; i<ct->neg_imag_pot ;i++){
+      if(ptr==NULL){
+        PRINTF("TOO FEW ARGUMENTS FOR NEGIMPOTFOS\n");
+        exit(-1);
+      }
+      ct->site_neg_imag_pot[i]= atoi(ptr);
+      ct->site_neg_imag_pot[i]--;
+      ct->site_annihilated_occupation[i] = 0.0;
+      PRINTF("   FO index no. %d for NIP occupation removal.\n", ct->site_neg_imag_pot[i]);
+      ptr = strtok(NULL, " ");
+    }
+    if (!(ct->jobtype == cteSCCDYNAMIC || ct->jobtype == cteNONSCCDYNAMIC || ct->jobtype == cteSURFACEHOPPING)) {
+      PRINTF("negative imaginary potential is only for SCC NON SFH impelemented.\n");
+      exit(-1);
+    }
   }
-  fclose(f); 
-  /* all read in and allocated. */
+
+  /* all read in and allocated at this point*/
 
 
 
+  /* set constant hubbard elements */
+  counter=0;
+  for(i = 0; i < ct->sites; i++){
+    for(j = 0; j < ct->site[i].homos; j++){
+      for(k = 0; k < ct->site[i].homos - j; k++ ){
+        ct->hubbard[counter][counter+k] = ct->sic * (ct->site[i].hubbard[j] + ct->site[i].hubbard[k])*0.5; //variation of MO-energy if an other orbital on this site is getting charged. 
+        if(ct->do_epol==1)
+          ct->hubbard[counter][counter+k] -= 1.0/(2.0*ct->site[i].radius*NM_TO_BOHR)*(1.0-1.0/EPSILON_OP); //influence of electronic polarization
+        ct->hubbard[counter+k][counter] = ct->hubbard[counter][counter+k];
+      }
+      if (ct->do_lambda_i == 1) {
+        ct->hubbard[counter][counter] -= ct->site[i].lambda_i[j];
+      }
+      counter++;
+    }
+  }
 
+
+  /* assign atoms */
+
+  PRINTF("Assigning QM atoms.\n");
+  
   /* build pool of all QM connection atoms */
   QMCApoolcounter = 0;
   for (j = 0; j < atoms->nr; j++) 
@@ -924,7 +1272,6 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
           }else{printf("nearest connection atom %d <- %d\n", j, m);} 
           //cap with best QMCA
           site->QMCN[QMCAcounter][0]=m;
-printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, site->connections);
           site->QMCN[QMCAcounter][1]=m; // if connection atom is no branching point both neighbors are the same
           site->atom[counter] = m;
           site->atomtype[counter] = 6; // 6 is pseudo-atom
@@ -1040,7 +1387,7 @@ printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, site->connections);
       }
     }
     if(m<0){
-      printf("error: no MMLA for QMLA no. %d found in a radius of 5 Angstrom \n",j);
+      PRINTF("error: no MMLA for QMLA no. %d found in a radius of 5 Angstrom \n",j);
       exit(-1);
     }
     //switch best MMLA (m) with MMLA j 
@@ -1059,6 +1406,7 @@ printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, site->connections);
 
    
   /////* select the external charges */////
+  PRINTF("Assigning MM atoms.\n");
   if (ct->qmmm > 0) {
     for (j = 0; j < top_global->natoms; j++)
       ct->extcharge_cplx[j]=-1;
@@ -1328,6 +1676,41 @@ printf("CHECK m %d cou %d con %d \n", m ,QMCAcounter, site->connections);
 #else
   printf("Completed charge transfer initialization\n");
 #endif
+
+
+/*
+  // Print out (nearly) all stuff that was read in 
+  for (k=0; k<ct->pool_size; k++){
+    s=ct->pool_site[k];
+    PRINTF("%d %d %d %d %d %d %d %d %d %f %d %d\n", s.type, s.resnr, s.atoms, s.bonds, s.connections, s.homos,s.extcharges, s.nel, s.norb, s.radius, s.do_scc, s.active);
+    for (i=0; i<s.atoms; i++){
+      PRINTF("%d %d \n", s.atom[i], s.atomtype[i]);
+    }
+    for (i=0; i<s.bonds; i++){
+      PRINTF("%d %d %d \n", s.QMLA[i], s.MMLA[i], s.nochrs[i]);
+      for (j=0; j<s.nochrs[i]; j++)
+        PRINTF("%s\n", s.nochr[i][j]);
+      for (j=0; j<s.addchrs[i]; j++)
+        PRINTF("%s %d\n", s.addchr[i][j], s.modif_extcharge[i][j]);
+    }
+    for (i=0; i<s.extcharges; i++)
+      PRINTF("%d ", s.extcharge[i]);
+    for (i=0; i<s.homos; i++){
+      PRINTF("%d %f %f\n", s.homo[i], s.hubbard[i], s.lambda_i[i]);
+    }
+  }
+  PRINTF("%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d \n", ct->jobtype, ct->interval, ct->qmmm, ct->sitetypes, ct->sites, ct->dim, ct->is_hole_transfer, ct->atoms_cplx, ct->extcharges_cplx, ct->modif_extcharges_cplx, ct->n_avg_ham, ct->do_lambda_i, ct->do_epol, ct->decoherence, ct->pool_size, ct->opt_QMzone);
+  PRINTF("%f %f %f %f %f    %f %f %f\n", ct->offdiag_scaling, ct->sic, ct->esp_scaling_factor, ct->telec, ct->fermi_kt, ct->efield[0],ct->efield[1],ct->efield[2]);
+  for (i=0; i<ct->atoms_cplx; i++)
+    PRINTF("%d %d \n", ct->atom_cplx[i], ct->atomtype_cplx[i]);
+  for (i=0; i<ct->extcharges_cplx; i++)
+    PRINTF("%d ", ct->extcharge_cplx[i]);
+  for (i=0; i<ct->modif_extcharges_cplx; i++)
+    PRINTF("%d ", ct->modif_extcharge_cplx[i]);
+  for (i=0; i< ct->dim; i++)
+    PRINTF("%f %f \n", ct->wf[i], ct->wf[i+ct->dim]);
+
+*/
 
   return;
 }
@@ -2614,7 +2997,8 @@ void get_MM_params(charge_transfer_t *ct, dftb_t *dftb, MPI_Comm ct_mpi_comm, in
   int i;
   for (i=0; i<ct->sites; i++)
     if (i % ct_mpi_size == ct_mpi_rank) {
-      get_delta_q(dftb, ct, i);
+      if (ct->delta_q_mode==0)
+        get_delta_q(dftb, ct, i);
       if(ct->do_lambda_i==2 || ct->do_lambda_i==3)
         get_internal_forces(dftb, ct, i);
     }
@@ -2677,7 +3061,8 @@ void get_MM_params(charge_transfer_t *ct, dftb_t *dftb)
 {
   int i;
   for (i=0; i<ct->sites; i++){
-    get_delta_q(dftb, ct, i);
+    if(ct->delta_q_mode==0)
+      get_delta_q(dftb, ct, i);
     if(ct->do_lambda_i==2 || ct->do_lambda_i==3)
       get_internal_forces(dftb, ct, i);
   }
@@ -2940,7 +3325,7 @@ double calc_tda(charge_transfer_t *ct)
         printf("%lf ", gb[i+j*nb]*HARTREE_TO_EV);
       printf("\n");
     }
-    //*/
+    */
   
   
     /*
@@ -3027,6 +3412,7 @@ void ct_assemble_hamiltonian(charge_transfer_t *ct, dftb_t *dftb)
     for (t=0; t<ct->n_avg_ham; t++)
     for (i=0; i<ct->dim; i++) {
       ct->hamiltonian_history[i][i][t] = (ct->is_hole_transfer==1) ? -dftb->phase2.THamilOrtho[i][i] : dftb->phase2.THamilOrtho[i][i];
+      ct->hamiltonian_history[i][i][t] += ct->fo_shift[i]; 
       for (j=i+1; j<ct->dim; j++) {
         ct->hamiltonian_history[i][j][t] = ct->hamiltonian_history[j][i][t] = (ct->is_hole_transfer==1) ? -dftb->phase2.THamilOrtho[i][j] * ct->offdiag_scaling:  dftb->phase2.THamilOrtho[i][j] * ct->offdiag_scaling; //  1.0 or 1.540 scaling factor according to J. Chem. Phys. 140, 104105 (2014) // this is the right way to do it. without changing off-diagonal elements the eigenvalues of the CG Ham are not necessarily -eigenvalue of electron transfer.
       }
@@ -3039,6 +3425,7 @@ void ct_assemble_hamiltonian(charge_transfer_t *ct, dftb_t *dftb)
   
     for (i=0; i<ct->dim; i++) {
       ct->hamiltonian_history[i][i][0] = (ct->is_hole_transfer==1) ? -dftb->phase2.THamilOrtho[i][i] : dftb->phase2.THamilOrtho[i][i];
+      ct->hamiltonian_history[i][i][0] += ct->fo_shift[i];
       for (j=i+1; j<ct->dim; j++) {
         ct->hamiltonian_history[i][j][0] = ct->hamiltonian_history[j][i][0] = (ct->is_hole_transfer==1) ? -dftb->phase2.THamilOrtho[i][j] * ct->offdiag_scaling:  dftb->phase2.THamilOrtho[i][j] * ct->offdiag_scaling; //  1.0 or 1.540 scaling factor according to J. Chem. Phys. 140, 104105 (2014) // this is the right way to do it. without changing off-diagonal elements the eigenvalues of the CG Ham are not necessarily -eigenvalue of electron transfer.
       }
@@ -6095,7 +6482,7 @@ int do_prezhdo_sfhopping(charge_transfer_t *ct, dftb_broyden_t *broyd, double *f
         ct->tfs_overlap[k][j] = ski;
       }
     }
-//*/
+*/
    for (i=0; i<ct->dim; i++)
     for (j=0; j<ct->dim; j++) {
       a=ct->tfs_overlap[i][i]*ct->tfs_overlap[i][i] + ct->tfs_overlap[j][j]*ct->tfs_overlap[j][j];
@@ -6135,7 +6522,7 @@ int do_prezhdo_sfhopping(charge_transfer_t *ct, dftb_broyden_t *broyd, double *f
     }
     printf("\n");
   }
-  //*/
+  */
 
 
   /* 3. do the propagation of the wave function / populations
@@ -6565,7 +6952,7 @@ void get_internal_forces(dftb_t *dftb, charge_transfer_t *ct, int site_i)
   for (i=0; i<nn; i++)
     for(l=0; l<DIM; l++) 
       printf("usual grad at atom i %d  QM force %lf \n", i,  -(real) HARTREE_BOHR2MD * dftb1.partgrad[i][l]);
-//*/
+*/
 /*
   //force due to changing atomic charges by extracting electron from HOMO // now we are only calculating DFTB1 forces
   for (i=0; i<nn; i++)
@@ -6573,11 +6960,11 @@ void get_internal_forces(dftb_t *dftb, charge_transfer_t *ct, int site_i)
   gamma_gradient_homo(dftb, dftb1.x, dftb1.partgrad, ct, site_i);
   for (i=0; i<nn; i++)
     dvec_inc(dftb1.grad[i], dftb1.partgrad[i]); 
-/*  
+  
   for (i=0; i<nn; i++)
     for(l=0; l<DIM; l++) 
       printf("gamma grad at atom i %d  QM force %lf \n", i,  -(real) HARTREE_BOHR2MD * dftb1.partgrad[i][l]);
-//*/
+*/
 
 /*  
   // third force term //this is not needed
@@ -6589,7 +6976,7 @@ void get_internal_forces(dftb_t *dftb, charge_transfer_t *ct, int site_i)
   for (i=0; i<nn; i++)
     for(l=0; l<DIM; l++) 
       printf("additional grad at atom i %d  QM force %lf \n", i,  -(real) HARTREE_BOHR2MD * dftb1.partgrad[i][l]);
-//*/
+*/
   
   return;
 }
@@ -6670,7 +7057,7 @@ for (i=0; i<ct->dim; i++) {
 for (m=i; m<ct->dim; m++) printf(" %10.6f ", dftb->overl_test[i][m]);
 }
 printf( "\n");
-//*/
+*/
 // overlap with last step //
 // <evec_ao|evec_ao_old> = evec_ao^T * S_ao * evec_ao_old
 for (i = 0; i < ct->dim; i++)

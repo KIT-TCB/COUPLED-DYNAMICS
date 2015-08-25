@@ -1,15 +1,15 @@
-/home/kit/ipc/yc6285/SLKO/CT-SLKO/8-inf/
-PAR
-1
-hole
-SOD
-QES
-1.5
-E X F
-1
-mol.spec
-3
-3
-92 1 2
-93 1 2
-94 1 2
+SlkoPath	= /home/kit/ipc/yc6285/SLKO/CT-SLKO/8-inf/
+jobtype		= PAR
+nstQM		= 1
+chargecarrier	= hole
+offdiagscaling	= yes
+extchrmode	= pme
+espscaling	= 1.5
+efield		= 0.0 0.0 0.0
+nsitetypes	= 1
+typefiles	= mol.spec
+nsites		= 3
+zonesize	= 3
+sites		= 92 93 94
+sitetypes	= 1  1  1
+sitescc		= 2  2  2

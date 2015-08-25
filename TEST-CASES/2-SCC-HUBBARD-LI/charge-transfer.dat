@@ -1,26 +1,16 @@
-/home/kit/ipc/yc6285/SLKO/CT-SLKO/8-inf/
-SCC
-hole
-SOD
-QES
-1.5
-E X F
-I M P
-SIC
-0.2
-LI
-1
-mol.spec
-3
-3
-92 1 0
-93 1 0
-94 1 0
-0.0 0.0
-0.0 0.0
-0.0 0.0
-0.0 0.0
-0.0 0.0
-0.0 0.0
-no N I P
-END
+slkoPath	=/home/kit/ipc/yc6285/SLKO/CT-SLKO/8-inf/
+jobtype		=SCC
+chargecarrier	=hole
+offdiagscaling	=on
+extchrmode	=PME
+espscaling	=1.5
+SIC		=0.2
+internalrelax	=parameter
+nsitetypes	=1
+typefiles	=mol.spec
+nsites		=3
+sites		=92 93 94
+sitetypes	=  1 1 1
+sitescc		= 0 0 0
+wavefunctionreal= 0.0  0.0  0.0  0.0  0.0  0.0
+wavefunctionim	= 0.0  0.0  0.0  0.0  0.0  0.0
