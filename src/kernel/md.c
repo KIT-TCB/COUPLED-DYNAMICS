@@ -1602,12 +1602,8 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
        /* evaluate the amount of annihilated charge due to neg. imag. potentials */
        for (i=0; i<ct->neg_imag_pot; i++)
          ct->site_annihilated_occupation[i] += 2 * ct->neg_imag_pot_rate_constant * PS_TO_AU * ct->occupation[ct->site_neg_imag_pot[i]] * ir->delta_t;
-       /* additional option: if no wf is specified, take lowest eigenvector as starting function */
-       ct->survival=0;
-       for (i=0; i<ct->dim; i++) 
-         ct->survival += SQR(ct->wf[i]) + SQR(ct->wf[i+ct->dim]);
-       if (ct->survival < 0.99 && ct->first_step ){ //should be normalized, 0.01 tolerance
-         printf("WARNING: no correct starting wave function was specified. Lowest eigenvector will be taken instead.\n");
+       /* additional option:  take lowest eigenvector as starting function */
+       if (ct->adiabstart && ct->first_step ){
          f_ct_startwf = fopen ("CT_STARTWF.xvg", "w" );
          ct->fermi_kt = BOLTZMANN_HARTREE_KELVIN * 300; // T=300K helps converging 
          if(do_adiab_fermi_onestate(ct, ct_broyden, ct_broyden->df , f_ct_startwf) == 1){

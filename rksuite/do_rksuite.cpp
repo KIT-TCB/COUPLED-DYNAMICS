@@ -159,6 +159,7 @@ typedef struct {
   double survival_threshold;
   int rk_neq;          /* Runge-Kutta: number of equations = 2 * number of sites */
   double rk_tol;       /* tolerance for Runge-Kutta */
+  int adiabstart;      /* start SCC from lowest adiabatic state */
   double *wf;          /* CG wavefunction, dimension 2n: real[0] real[1] real[2] ... real[n-1] imag[0] imag[1] imag[2] ... imag[n-1] */
   double *wf_old;      /* CG wavefunction */
   double *wf_exc;

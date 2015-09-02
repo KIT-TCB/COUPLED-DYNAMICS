@@ -209,33 +209,34 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   FILE *f, *f2;
   char sitespecdat[MAXSITETYPES][MAXWIDTH], value[MAXWIDTH];
   char possiblekeys[][2][MAXWIDTH]={
-  {"slkopath",  "Path to directory of the DFTB Slater-Koster files"},
+  {"slkopath",  "{Path} to directory of the DFTB Slater-Koster files"},
   {"chargecarrier",   "The charge carrier (electron/hole). Will effect sign of the Hamilton matrix and of the charges that are added to the force-field."},
-  {"offdiagscaling",   "(yes/on) Scale offdiagonal elements of FO Hamiltonian. See: J. Chem. Phys. 2014, 140, 104105+  and  Phys. Chem. Chem. Phys. 2015, 17, 14342-14354."},
-  {"extchrmode",   "Treatment of the MM pointcharges. (vacou) is as it says, (qmmm) uses pointcharges with minimum image convention, (pme) is particle-mesh-Ewald treatment"},
+  {"offdiagscaling",   "{yes/no} Scale offdiagonal elements of FO Hamiltonian. See: J. Chem. Phys. 2014, 140, 104105+  and  Phys. Chem. Chem. Phys. 2015, 17, 14342-14354."},
+  {"extchrmode",   "Treatment of the MM pointcharges. {vacou} is as it says, {qmmm} uses pointcharges with minimum image convention, {pme} is particle-mesh-Ewald treatment"},
   {"espscaling",  "Scales the strength of the electrostatic potential of the environment with 1/espscaling."},
   {"efield", "External electric field vector [V/cm]. X Y and Z direction. Adds shift to the site energies depending on their position."},
   {"nsitetypes", "Number of unique molecules."},
   {"typefiles", "File with specifications for every unique fragment."},
   {"nsites", "Total number of sites that are treated at the QM level."},
   {"zonesize", "Select QM zone as subset of nstites. Default is zonesize=nsites."},
-  {"optimizezone", "If (yes/on) construct QM zone of zonesize fragments around site with lowest energy of all nsites fragments."},
+  {"optimizezone", "If {yes/no} construct QM zone of zonesize fragments around site with lowest energy of all nsites fragments."},
   {"sites", "Residue number of all nsites fragments"},
   {"sitetypes", "Type of every site. 1,2,3,etc. corresponding to the order of typefiles."},
-  {"sitescc", "(0) Non-self-consistent DFTB1 calculations. (1) Self-consistent DFTB2 calculations. (2) DFTB2 calculations where initial charges are taken from last MD step to accelerater convergence."},
+  {"sitescc", "{0} Non-self-consistent DFTB1 calculations. {1} Self-consistent DFTB2 calculations. {2} DFTB2 calculations where initial charges are taken from last MD step to accelerater convergence."},
   {"foshift", "Shift that is added to the diagonal elements of the FO hamiltonian [hartree]. This can correct for wrong relative energies due to approximating ionization potentials with HOMO energies"},
-  {"jobtype", "(PAR)(SCC)(TDA)"},
+  {"jobtype", "{PAR}: calculate Hamiltonmatrix along MD. Also possible  with -rerun option. {SCC}: propagate chargecarrier and nuclei in an Ehrenfest simulation. {TDA}: calculate bridge mediated coupling between FO 1 and FO N with bridge states 2...(N-1)"},
   {"nstqm", "Frequency of the QM calculations for jobs whithout propagation. 1 is every step, 2 is every other step etc."},
   {"tfermi", "Fermi Temperature [K] for certain jobs."},
-  {"epol", "Electronic polatization model. (imp) is naive implicit polarization (like born-model) for the charge carrier."},
+  {"epol", "Electronic polatization model. {imp} is naive implicit polarization (like born-model) for the charge carrier."},
   {"sic", "Self interaction correction factor. Scales second order terms. See: J. Phys. Chem. B 2010, 114, 11221-11240."},
-  {"internalrelax", "Internal relaxation of the sites. (parameter) uses precalculated values. (onsite) relaxes each site according to DFTB forces. (full) additionally calculates inter-molecular forces."},
+  {"internalrelax", "Internal relaxation of the sites. {parameter} uses precalculated values. {onsite} relaxes each site according to DFTB forces. {full} additionally calculates inter-molecular forces."},
+  {"adiabstart", "{yes/no} Take lowest eigenvector of the FO-Hamiltonian as starting wavefunction."},
   {"wavefunctionreal", "Coefficients of the starting Wavefunction. Real part. Default is vector of zeroes. If non-normalized wavefunction is provided, lowest adiabatic eigenvector will be taken instead."},
   {"wavefunctionim", "Imaginary part of the wavefunction coefficients. Default is vector of zeroes."},
   {"nnegimpot", "Negative imaginary potential. Can be used to annihilate charge."},
   {"negimpotrate", "Rate for charge annihilation."},
   {"negimpotfos", "FOs from which the charge will be annihilated."},
-  {"deltaqmode", "Either add precalculated RESP charges to the force-field to describe the charge-carrier (resp) or use internally obtained DFTB Mulliken-charges (mulliken)"}
+  {"deltaqmode", "Either add precalculated RESP charges to the force-field to describe the charge-carrier {resp} or use internally obtained DFTB Mulliken-charges {mulliken}"}
   };
 
   char possiblekeys2[][2][MAXWIDTH]={
@@ -344,7 +345,6 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   ct->opt_QMzone=0;
   ct->neg_imag_pot = 0; //negative imaginary potential to drain the charge at some sites
   ct->decoherence = 0;
-
 
   /* evaluate input */
 
@@ -1095,39 +1095,60 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 
 
   /* read the wavefunction */
-  if(searchkey(lines, input, "wavefunctionreal",value, 0)){
-    PRINTF("Read the wavefunction:\n");
-    ptr = strtok(value, " ");
-    for (i=0; i<ct->dim ;i++){
-      if(ptr==NULL){
-        PRINTF("TOO FEW ARGUMENTS FOR WAVEFUNCTIONREAL\n");
-        exit(-1);
+  
+  if(!(ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
+      ct->jobtype == cteESP || ct->jobtype == cteTDA)){
+    counter=0;
+    if(searchkey(lines, input, "adiabstart",value, 0)){
+      if(strcmp(value,"yes")==0||strcmp(value,"on")==0||strcmp(value,"1")==0){
+        counter++;
+        ct->adiabstart=1;
+        PRINTF("Starting from lowest adiabatic state.\n");
+      }else if (strcmp(value,"no")==0||strcmp(value,"off")==0||strcmp(value,"0")==0){
+        ct->adiabstart=0;
       }
-      ct->wf[i]= atof(ptr);
-      ptr = strtok(NULL, " ");
+    }else{
+      ct->adiabstart=0;
     }
-    if(searchkey(lines, input, "wavefunctionim",value, 0)){
+    if (searchkey(lines, input, "wavefunctionreal",value, 0)){
+      counter++;
+      ct->adiabstart=0;
+      PRINTF("Read the wavefunction:\n");
       ptr = strtok(value, " ");
       for (i=0; i<ct->dim ;i++){
         if(ptr==NULL){
-          PRINTF("TOO FEW ARGUMENTS FOR WAVEFUNCTIONIM\n");
+          PRINTF("TOO FEW ARGUMENTS FOR WAVEFUNCTIONREAL\n");
           exit(-1);
         }
-        ct->wf[ct->dim+i]= atof(ptr);
+        ct->wf[i]= atof(ptr);
         ptr = strtok(NULL, " ");
       }
+      if(searchkey(lines, input, "wavefunctionim",value, 0)){
+        ptr = strtok(value, " ");
+        for (i=0; i<ct->dim ;i++){
+          if(ptr==NULL){
+            PRINTF("TOO FEW ARGUMENTS FOR WAVEFUNCTIONIM\n");
+            exit(-1);
+          }
+          ct->wf[ct->dim+i]= atof(ptr);
+          ptr = strtok(NULL, " ");
+        }
+      }
+      ct->survival = 0.0;
+      for (i=0; i<ct->dim; i++) {
+        PRINTF(" Re_wf[%d] = %7.4f, Im_wf[%d] = %7.4f\n", i+1, ct->wf[i], i+1, ct->wf[i + ct->dim]);
+        ct->occupation[i] = SQR(ct->wf[i]) + SQR(ct->wf[ct->dim + i]);
+        ct->survival += ct->occupation[i];
+      }
+      PRINTF("Sum of occupations = %7.5f\n", ct->survival);
+      if (ct->survival < 0.99 || ct->survival > 1.01){ //should be normalized, 0.01 tolerance
+        PRINTF("WARNING: no normalized starting wave function was specified.\n");
+        exit(-1);
+      }
     }
-    ct->survival = 0.0;
-    for (i=0; i<ct->dim; i++) {
-      PRINTF(" Re_wf[%d] = %7.4f, Im_wf[%d] = %7.4f\n", i+1, ct->wf[i], i+1, ct->wf[i + ct->dim]);
-      ct->occupation[i] = SQR(ct->wf[i]) + SQR(ct->wf[ct->dim + i]);
-      ct->survival += ct->occupation[i];
-    }
-    PRINTF("Sum of occupations = %7.5f\n", ct->survival);
-
-    if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
-      ct->jobtype == cteESP || ct->jobtype == cteTDA) {
-      PRINTF("WARNING: specified wavefunction, which makes only sense for jobtypes with actual charge in the system.\n");
+    if (counter!=1){
+      PRINTF("Providing a starting wavefunction doesn't make sense with option 'adiabstart'.\n");
+      exit(-1);
     }
   }
 
