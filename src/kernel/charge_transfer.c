@@ -341,7 +341,6 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   // either sensible values or "not defined"=-1 for values that have to be specified in the input file and will be checked later.
   ct->n_avg_ham = 1; // average hamilton over n_avg_ham steps to assimilate fast non-classical vibrations
   ct->esp_scaling_factor = 1.; // scaling of the electrostatic potential of the environment
-  ct->do_lambda_i = 0;
   ct->opt_QMzone=0;
   ct->neg_imag_pot = 0; //negative imaginary potential to drain the charge at some sites
   ct->decoherence = 0;
@@ -557,7 +556,10 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     PRINTF("Omitting second-order terms.\n");
   }
   if(searchkey(lines, input, "internalrelax",value, 0)){
-    if(strcmp(value,"parameter")==0){ // former L_I
+    if(strcmp(value,"no")==0){ 
+      ct->do_lambda_i = 0;
+      PRINTF("No inner-sphere reorganization energy\n");
+    }else if(strcmp(value,"parameter")==0){ // former L_I
       ct->do_lambda_i = 1;
       PRINTF("Emulation of inner-sphere reorganization energy with precalculated parameter.\n");
     }else if(strcmp(value,"onsite")==0){ // former LIQM
@@ -584,6 +586,9 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
       ct->jobtype == cteESP || ct->jobtype == cteTDA) {
       PRINTF("WARNING: specified internal relaxation, which makes only sense for jobtypes with actual charge in the system.\n");
     }
+  }else{
+    ct->do_lambda_i = 0;
+    PRINTF("No inner-sphere reorganization energy\n");
   }
 
   if(searchkey(lines, input, "deltaqmode",value, 0)){
