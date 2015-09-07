@@ -1151,8 +1151,12 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
         exit(-1);
       }
     }
-    if (counter!=1){
+    if (counter>1){
       PRINTF("Providing a starting wavefunction doesn't make sense with option 'adiabstart'.\n");
+      exit(-1);
+    }
+    if (counter<1){
+      PRINTF("Provide either a starting wavefunction via keyword 'wavefunctionreal' (and optional 'wavefunctionim') or alternatively take the lowest adiabatic state with 'adiabstart'.\n");
       exit(-1);
     }
   }
