@@ -300,7 +300,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   //convert all to lowercase for better handling (besides file names)
   for (line=0; line<lines; line++){
     //ch=fscanf(f, "%[;a-zA-Z0-9/] = %[-a-zA-Z0-9/{}. ]\n", input[line][0],  input[line][1]);
-    ch=fscanf(f, " %[^= \t] = %[^=\n\t] \n", input[line][0],  input[line][1]); 
+    ch=fscanf(f, " %[^= \t\r] = %[^=\n\t\r] \n", input[line][0],  input[line][1]); 
     if (ch != 2 ){printf("READING ERROR in line %d.\n Use format 'keyword = value'.\n ", line+1); exit(0);}
     //strlwr(input[line][0]);
     len = strlen(input[line][0]);
