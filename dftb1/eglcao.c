@@ -280,10 +280,15 @@ int run_dftb1(charge_transfer_t *ct, dftb_t *dftb, int ibase) // i - nucleobase 
     }
     // */
 
-    // calculate occupation (occ) and Fermi energy (efermi),
-    fermi(dftb1.ndim, dftb1.ev, dftb1.occ, &efermi, dftb1.nel);
-    // for (i=0; i<dftb1.ndim; i++)
-    //   printf("%d: %f %f\n", i+1, dftb1.ev[i], dftb1.occ[i]);
+    // calculate occupation (occ) and Fermi energy (efermi), or apply customized occupation 
+    if (ct->site[ibase].do_custom_occ == 1){
+      for (i=0; i<dftb1.ndim; i++)
+       dftb1.occ[i]=ct->site[ibase].custom_occ[i];
+    }else{
+      fermi(dftb1.ndim, dftb1.ev, dftb1.occ, &efermi, dftb1.nel);
+    }
+    //for (i=0; i<dftb1.ndim; i++)
+    //  printf("%d: %f %f\n", i+1, dftb1.ev[i], dftb1.occ[i]);
 
     // sum of occupied eigenvalues
     eel = 0.0;

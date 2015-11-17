@@ -49,6 +49,8 @@ typedef struct {
   int norb;            /* total number of orbitals */
   double radius;       /* radius of charged sphere in polarizable continuum */
   int do_scc;          /* each site may or may not be calculated self consistently */
+  int do_custom_occ;   /* each site may also use a customized occupation, instead of fermi distribution */
+  double *custom_occ;      
   double *com;         /* center of mass. needed to decide if site should become active or not */
   int active;          /* switch 0/1 that determines if site is part of the QM calculation or just inactive member of the pool */
 } ct_site_t;

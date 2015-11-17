@@ -254,7 +254,8 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   {"fragorbs", "The index (starting from 1) of the molecular orbitals."},
   {"hubbard", "Hubbard parameter for each orbital."},
   {"lambda_i", "Lambda_i for each orbital."},
-  {"dqresp", "List of RESP charges that will be added to the QM atoms, scaled by the occupation of the HOMO/LUMO. If more than one HOMO is used per site, first the list for the first FO is read then for the second."}
+  {"dqresp", "List of RESP charges that will be added to the QM atoms, scaled by the occupation of the HOMO/LUMO. If more than one HOMO is used per site, first the list for the first FO is read then for the second."},
+  {"customocc", "list with nallorbitals elements defining a fixed occupation (e.g. 2 2 2 1 1 0 0 0)"}
   };
 
 
@@ -835,6 +836,27 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
         }
       }
     }
+    if (searchkey(lines2, input2, "customocc",value, 0)){
+      ct->sitetype[i].do_custom_occ=1;
+      snew(ct->sitetype[i].custom_occ, ct->sitetype[i].norb);
+      ptr = strtok(value, " ");
+      sum = 0.0;
+      for(j = 0; j < ct->sitetype[i].norb; j++){
+        if(ptr==NULL){
+          PRINTF("TOO FEW ARGUMENTS FOR CUSTOMOCC\n");
+          exit(-1);
+        }
+        ct->sitetype[i].custom_occ[j]=atof(ptr);
+        ptr = strtok(NULL, " ");
+        sum+=ct->sitetype[i].custom_occ[j];
+      }
+      if((int) sum != ct->sitetype[i].nel){
+        PRINTF("WRONG ELECTRON NUMBER IN CUSTOM OCCUPATION\n");
+        exit(-1);
+      }
+    }else{
+      ct->sitetype[i].do_custom_occ=0;
+    }
   }
 
   /* read in sites*/
@@ -915,10 +937,11 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     }
     snew(ct->pool_site[i].homo, ct->sitetype[ct->pool_site[i].type].homos);
     snew(ct->pool_site[i].lambda_i, ct->sitetype[ct->pool_site[i].type].homos);
+    snew(ct->pool_site[i].custom_occ, ct->sitetype[ct->pool_site[i].type].norb);
 
     l = ct->pool_site[i].resnr; // resnr is parked in l. otherwise the resnr would get lost by copying sitetype to site.
     m = ct->pool_site[i].do_scc; // do_SCC is parked in m. otherwise the resnr would get lost by copying sitetype to site.
-    ct->pool_site[i]= ct->sitetype[ct->pool_site[i].type]; //not sure if copying is that easy  
+    ct->pool_site[i]= ct->sitetype[ct->pool_site[i].type]; //not sure if copying is that easy. it is  
     ct->pool_site[i].resnr = l;
     ct->pool_site[i].do_scc = m;
 
