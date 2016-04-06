@@ -184,15 +184,140 @@ int searchkey(int lines, char input[MAXLINES][2][MAXWIDTH], char *key , char val
   for (line=0; line<lines; line++){
     if(strcmp(input[line][0],key)==0){
       strcpy(value, input[line][1]);
-      return 1;
+      return 1; //keyword found
     }
   }
   if (required){
     printf("KEYWORD %s NOT FOUND!\n", key);
     exit(-1);
   }else{
-    return 0;
+    return 0; //keyword not found
   }
+}
+
+int read_file(char* file_name, char input[MAXLINES][2][MAXWIDTH], char possiblekeys[][2][MAXWIDTH], int nkeys){
+  int i,j;
+  int lines, ch, line, len;
+  FILE *f;
+  char *s;
+  //char input[MAXLINES][2][MAXWIDTH];
+
+  f = fopen(file_name, "r");
+  if (f == NULL) {
+    PRINTF("%s not accessible, exiting!\n", file_name);
+    exit(-1);
+  }
+  PRINTF("Reading file %s\n", file_name);
+
+  /* get length of input file */
+  lines=0;
+  while(!feof(f)){
+    ch = fgetc(f);
+    if(ch == '\n'){lines++;}
+  }
+  //rewind(f);
+  fclose(f);
+  f=fopen(file_name,"r");
+
+
+  /* read input file */
+  for (line=0; line<lines; line++){
+    //ch=fscanf(f, "%[;a-zA-Z0-9/] = %[-a-zA-Z0-9/{}. ]\n", input[line][0],  input[line][1]);
+    ch=fscanf(f, " %[^= \t\r] = %[^=\n\t\r] \n", input[line][0],  input[line][1]); 
+    if (ch != 2 ){printf("READING ERROR in line %d.\n Use format 'keyword = value'.\n ", line+1); exit(0);}
+
+    //remove trailing whitespace
+    s = input[line][1] + strlen(input[line][1]);
+    while (--s >= input[line][1]) {
+      if (!isspace(*s)) break;
+      *s = 0;
+    }
+
+    //convert all to lowercase for better handling (besides file and atom names)
+    len = strlen(input[line][0]);
+    for(i=0; i<len; i++)
+       input[line][0][i]=tolower((unsigned char)input[line][0][i]);
+    if ( (strcmp(input[line][0],"slkopath") && strcmp(input[line][0],"specfiles") && strncmp(input[line][0], "name", 4) ) ) {
+      len = strlen(input[line][1]);
+      for(i=0; i<len; i++)
+         input[line][1][i]=tolower((unsigned char)input[line][1][i]);
+    }
+    // check input file
+    j=1;
+    for (i=0; i< nkeys; i++){
+      if(strcmp(input[line][0],possiblekeys[i][0])==0)
+        j=0;
+    }
+    if (j) {
+      PRINTF("KEYWORD NOT KNOWN: %s\nALLOWED KEYWORDS:\n", input[line][0]);
+      for (i=0; i< nkeys; i++){
+        PRINTF("%20s:  %s\n",possiblekeys[i][0], possiblekeys[i][1]);
+      }
+      exit(-1);
+    }
+  }
+  fclose(f);
+  PRINTF("Finished reading file %s\n", file_name);
+
+  /* print copy of the input file */
+  PRINTF("---------------------\n");
+  PRINTF("INPUT:\n");
+  for (line=0; line<lines; line++){
+    PRINTF("%s = %s\n", input[line][0], input[line][1]);
+  }
+  PRINTF("---------------------\n");
+  return lines;
+}
+
+
+
+
+int split_string_into_double(char value[MAXWIDTH],int n, double* target, char* name){
+  int i;
+  char *ptr;
+
+  i=0;
+  ptr = strtok(value, " ");
+  while (ptr != NULL){
+    target[i]= atof(ptr);
+    ptr = strtok (NULL, " ");
+    i++;
+  }
+  if(i>n){PRINTF("TOO MANY ARGUMENTS FOR %s\n", name); exit(-1);}
+  else if(i<n){PRINTF("TOO FEW ARGUMENTS FOR %s\n", name); exit(-1);} 
+  else return 0;
+}
+
+
+int split_string_into_int(char value[MAXWIDTH],int n, int* target, char* name){
+  int i;
+  char *ptr;
+
+  i=0;
+  ptr = strtok(value, " ");
+  while (ptr != NULL){
+    target[i]= atoi(ptr);
+    ptr = strtok (NULL, " ");
+    i++;
+  }
+  if(i>n){PRINTF("TOO MANY ARGUMENTS FOR %s\n", name); exit(-1);}
+  else if(i<n){PRINTF("TOO FEW ARGUMENTS FOR %s\n", name); exit(-1);} 
+  else return 0;
+}
+int split_string_into_string(char value[MAXWIDTH],int n, char target[][MAXWIDTH], char* name){
+  int i;
+  char *ptr;
+
+  i=0;
+  ptr = strtok(value, " ");
+  while (ptr != NULL){
+    strcpy(target[i],ptr);
+    ptr = strtok (NULL, " ");
+    i++;
+  }
+  if(i>n){PRINTF("TOO MANY ARGUMENTS FOR %s\n", name); exit(-1);}
+  else if(i<n){PRINTF("TOO FEW ARGUMENTS FOR %s\n", name); exit(-1);} 
+  else return 0;
 }
 
 
@@ -208,7 +333,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 #endif
   FILE *f, *f2;
   char sitespecdat[MAXSITETYPES][MAXWIDTH], value[MAXWIDTH];
-  char possiblekeys[][2][MAXWIDTH]={
+  char possiblekeys1[][2][MAXWIDTH]={
   {"slkopath",  "{Path} to directory of the DFTB Slater-Koster files"},
   {"chargecarrier",   "The charge carrier (electron/hole). Will effect sign of the Hamilton matrix and of the charges that are added to the force-field."},
   {"offdiagscaling",   "{yes/no} Scale offdiagonal elements of FO Hamiltonian. See: J. Chem. Phys. 2014, 140, 104105+  and  Phys. Chem. Chem. Phys. 2015, 17, 14342-14354."},
@@ -265,8 +390,9 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   dvec bond;
   ct_site_t *site, s;
 
-  char input[MAXLINES][2][MAXWIDTH],input2[MAXLINES][2][MAXWIDTH], *ptr; // 100 lines, 2 collumns (before and after '='), and string of 200 chars
-  int line, lines, lines2, ch, len;
+  char input1[MAXLINES][2][MAXWIDTH],input2[MAXLINES][2][MAXWIDTH]; // several lines, 2 collumns (before and after '='), and string of several chars
+  char dummy[MAXLINES2][MAXWIDTH];
+  int lines1, lines2, line;
 
   ct->first_step=1;
 #ifdef GMX_MPI
@@ -275,65 +401,12 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   printf("Initializing charge transfer\n");
 #endif
 
-  /* Read the file charge-transfer.dat - list of sites */
-  f = fopen("charge-transfer.dat", "r");
-  if (f == NULL) {
-    PRINTF("File charge-transfer.dat not accessible, exiting!\n");
-    exit(-1);
-  }
-  PRINTF("Reading file charge-transfer.dat\n");
-  //snew(ct, 1);
 
 
-  /* get length of input file */
-  lines=0;
-  while(!feof(f)){
-    ch = fgetc(f);
-    if(ch == '\n'){lines++;}
-  }
-  //rewind(f);
-  fclose(f);
-  f=fopen("charge-transfer.dat","r");
 
 
-  /* read input file */
-  
-  //convert all to lowercase for better handling (besides file names)
-  for (line=0; line<lines; line++){
-    //ch=fscanf(f, "%[;a-zA-Z0-9/] = %[-a-zA-Z0-9/{}. ]\n", input[line][0],  input[line][1]);
-    ch=fscanf(f, " %[^= \t\r] = %[^=\n\t\r] \n", input[line][0],  input[line][1]); 
-    if (ch != 2 ){printf("READING ERROR in line %d.\n Use format 'keyword = value'.\n ", line+1); exit(0);}
-    //strlwr(input[line][0]);
-    len = strlen(input[line][0]);
-    for(i=0; i<len; i++)
-       input[line][0][i]=tolower((unsigned char)input[line][0][i]);
-    if (strcmp(input[line][0],"slkopath")!=0 && strcmp(input[line][0],"specfiles")){
-      len = strlen(input[line][1]);
-      for(i=0; i<len; i++)
-         input[line][1][i]=tolower((unsigned char)input[line][1][i]);
-    }
-    // check input file
-    j=1;
-    for (i=0; i< sizeof(possiblekeys)/sizeof(possiblekeys[0]); i++){
-      if(strcmp(input[line][0],possiblekeys[i][0])==0)
-        j=0;
-    }
-    if (j) {
-      PRINTF("KEYWORD NOT KNOWN: %s\nALLOWED KEYWORDS:\n", input[line][0]);
-      for (i=0; i< sizeof(possiblekeys)/sizeof(possiblekeys[0]); i++){
-        PRINTF("%20s:  %s\n",possiblekeys[i][0], possiblekeys[i][1]);
-      }
-      exit(-1);
-    }
-  }
-  fclose(f);
-  PRINTF("Finished reading file charge-transfer.dat\n");
-
-  /* print copy of the input file */
-  printf("INPUT:\n");
-  for (line=0; line<lines; line++){
-    printf("%s = %s\n", input[line][0], input[line][1]);
-  }
+  /* Get input from file charge-transfer.dat */
+  lines1=read_file("charge-transfer.dat", input1, possiblekeys1, sizeof(possiblekeys1)/sizeof(possiblekeys1[0]));
 
 
 
@@ -346,13 +419,14 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   ct->neg_imag_pot = 0; //negative imaginary potential to drain the charge at some sites
   ct->decoherence = 0;
 
+
   /* evaluate input */
 
   /* read in stuff that is always needed */
-  searchkey(lines, input, "slkopath", slko_path, 1);
+  searchkey(lines1, input1, "slkopath", slko_path, 1);
   PRINTF("SLKO files will be sought in %s\n", slko_path);
 
-  searchkey(lines, input, "chargecarrier",value, 1);
+  searchkey(lines1, input1, "chargecarrier",value, 1);
   if(strcmp(value,"hole")==0){
     ct->is_hole_transfer = 1;
     PRINTF("perform hole transfer\n");
@@ -363,14 +437,14 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     PRINTF("chargecarrier value not known\n");
     exit(-1);
   }
-  if (searchkey(lines, input, "offdiagscaling",value, 0)){
-    if(strcmp(value,"yes")==0||strcmp(value,"on")==0||strcmp(value,"1")==0){
+  if (searchkey(lines1, input1, "offdiagscaling",value, 0)){
+    if(strcmp(value,"yes")==0||strcmp(value,"on")==0){
       PRINTF("  scaling of off-diagonal elements applied \n");
       switch (ct->is_hole_transfer){
          case 1: ct->offdiag_scaling = OFFDIAG_FACTOR_HOLE; break;// 1.540 
          case 0: ct->offdiag_scaling = OFFDIAG_FACTOR_ELEC; break;// 1.795
       }
-    }else if (strcmp(value,"no")==0||strcmp(value,"off")==0||strcmp(value,"0")==0){
+    }else if (strcmp(value,"no")==0||strcmp(value,"off")==0){
       ct->offdiag_scaling = 1.0;
       PRINTF("standard hamilton matrix. off-diagonal elements unscaled\n");
     }else{
@@ -381,7 +455,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     ct->offdiag_scaling = 1.0;
     PRINTF("standard hamilton matrix. off-diagonal elements unscaled\n");
   }
-  if(searchkey(lines, input, "extchrmode",value, 0)){
+  if(searchkey(lines1, input1, "extchrmode",value, 0)){
     if(strcmp(value,"vacuo")==0){
       ct->qmmm = 0;
       PRINTF("\"in vacuo\" calculation - no QM/MM\n");
@@ -406,22 +480,14 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     ct->qmmm = 0;
     PRINTF("\"in vacuo\" calculation - no QM/MM\n");
   }
-  if (searchkey(lines, input, "espscaling",value, 0)){
+  if (searchkey(lines1, input1, "espscaling",value, 0)){
     ct->esp_scaling_factor = atof(value);
     PRINTF("the electrostatic interaction with MM atoms will be attenuated by a factor of %f\n", ct->esp_scaling_factor);
   }else{
     ct->esp_scaling_factor=1.0;
   }
-  if (searchkey(lines, input, "efield",value, 0)){
-    ptr = strtok(value, " ");
-    for (i=0; i<3 ;i++){
-      if(ptr==NULL){
-        PRINTF("TOO FEW ARGUMENTS FOR EFIELD\n");
-        exit(-1);
-      }
-      ct->efield[i]= atof(ptr);
-      ptr = strtok(NULL, " ");
-    }
+  if (searchkey(lines1, input1, "efield",value, 0)){
+    split_string_into_double(value, 3, ct->efield, "efield");
     PRINTF("electric field applied: direction = %lf %lf %lf \n  magnitude[V/cm]: %lf \n",
             ct->efield[0]/dnorm(ct->efield) ,ct->efield[1]/dnorm(ct->efield),ct->efield[2]/dnorm(ct->efield), dnorm(ct->efield));
   }else{
@@ -432,7 +498,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 
   /* read in job-specific stuff */
 
-  searchkey(lines, input, "jobtype",value, 1);
+  searchkey(lines1, input1, "jobtype",value, 1);
 
   if (strcmp(value,"scc")==0) {
     ct->jobtype = cteSCCDYNAMIC;
@@ -502,7 +568,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     }
   }
 
-  if(searchkey(lines, input, "nstqm",value, 0)){
+  if(searchkey(lines1, input1, "nstqm",value, 0)){
     ct->interval = atoi(value);
     if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNOMOVEMENT || ct->jobtype == cteESP || ct->jobtype == cteTDA){
       PRINTF("Performing QM calculation every %d steps.\n", ct->interval);
@@ -513,7 +579,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     ct->interval = 1;
   }
 
-  if(searchkey(lines, input, "tfermi",value, 0)){
+  if(searchkey(lines1, input1, "tfermi",value, 0)){
     if (ct->jobtype == cteFERMI || ct->jobtype == cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype == cteFERMISFHOPPING || ct->jobtype == cteTULLYFEWESTSWITCHES
         || ct->jobtype == ctePERSICOSFHOPPING) {
       ct->telec=atof(value);
@@ -524,13 +590,13 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     }
   }
 
-  if(searchkey(lines, input, "nstaverage",value, 0)){
+  if(searchkey(lines1, input1, "nstaverage",value, 0)){
     ct->n_avg_ham = atoi(value);
     PRINTF("WARNING: averaging hamilton over %d steps to assimilate fast non-classical vibrations\n This is just for testing, so take care.\n", ct->n_avg_ham);
   }else{
     ct->n_avg_ham = 1;
   }
-  if(searchkey(lines, input, "epol",value, 0)){
+  if(searchkey(lines1, input1, "epol",value, 0)){
     if(strcmp(value,"imp")==0){
       ct->do_epol=1;
       PRINTF("implicit electronic polarization applied (Born model)\n");
@@ -545,7 +611,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   }else{
     ct->do_epol=0;  
   }
-  if(searchkey(lines, input, "sic",value, 0)){
+  if(searchkey(lines1, input1, "sic",value, 0)){
       ct->sic=atof(value);
       PRINTF("Naive self-interaction correction applied, second-order term scaled by factor %f\n", ct->sic);
       if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
@@ -556,7 +622,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     ct->sic =0.0;
     PRINTF("Omitting second-order terms.\n");
   }
-  if(searchkey(lines, input, "internalrelax",value, 0)){
+  if(searchkey(lines1, input1, "internalrelax",value, 0)){
     if(strcmp(value,"no")==0){ 
       ct->do_lambda_i = 0;
       PRINTF("No inner-sphere reorganization energy\n");
@@ -592,7 +658,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     PRINTF("No inner-sphere reorganization energy\n");
   }
 
-  if(searchkey(lines, input, "deltaqmode",value, 0)){
+  if(searchkey(lines1, input1, "deltaqmode",value, 0)){
     if(strcmp(value,"mulliken")==0){
       ct->delta_q_mode=0;
       PRINTF("Representing the charge carrier with Mulliken charges.");
@@ -613,68 +679,16 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   /* build QM system */
 
   /* read in site specifications*/
-  searchkey(lines, input, "nsitetypes",value, 1);
+  searchkey(lines1, input1, "nsitetypes",value, 1);
   ct->sitetypes=atoi(value);
   snew(ct->sitetype, ct->sitetypes);
   PRINTF("There are %d different type(s) of sites\n", ct->sitetypes);
 
-  searchkey(lines, input, "typefiles",value, 1);
-  ptr = strtok(value, " ");
-  for (i=0; i<ct->sitetypes ;i++){
-    if(ptr==NULL){
-      PRINTF("TOO FEW ARGUMENTS FOR TYPEFILES\n");
-      exit(-1);
-    }
-    strcpy(sitespecdat[i],ptr);
-    ptr = strtok(NULL, " ");
-  }
+  searchkey(lines1, input1, "typefiles",value, 1);
+  split_string_into_string(value,ct->sitetypes, sitespecdat, "typefiles");
 
   for (i=0; i<ct->sitetypes ;i++){
-    f2 = fopen(sitespecdat[i], "r");
-    if (f2 == NULL) {
-      PRINTF("File %s not accessible, exiting!\n", sitespecdat[i]);
-      exit(-1);
-    }
-    PRINTF("Site parameters are read in from %s \n", sitespecdat[i]);
-    //get length of file
-    lines2=0;
-    while(!feof(f2)){
-      ch = fgetc(f2);
-      if(ch == '\n'){lines2++;}
-    }
-    fclose(f2);
-    f2=fopen(sitespecdat[i],"r");
-    
-    //convert keywords to lowercase for better handling
-    for (line=0; line<lines2; line++){
-      ch=fscanf(f2, " %[^= \t] = %[^=\n\t] \n", input2[line][0],  input2[line][1]);
-      if (ch != 2 ){printf("READING ERROR in line %d\n", line+1); exit(0);}
-      len = strlen(input2[line][0]);
-      for(j=0; j<len; j++){
-        input2[line][0][j]=tolower((unsigned char)input2[line][0][j]);
-      }
-      // check input file
-      j=1;
-      for (k=0; k< sizeof(possiblekeys2)/sizeof(possiblekeys2[0]); k++){
-        if(strcmp(input2[line][0],possiblekeys2[k][0])==0)
-          j=0;
-      }
-      if (j) {
-        PRINTF("KEYWORD NOT KNOWN: %s\nALLOWED KEYWORDS:\n", input2[line][0]);
-        for (k=0; k< sizeof(possiblekeys2)/sizeof(possiblekeys2[0]); k++){
-          PRINTF("%20s:  %s\n",possiblekeys2[k][0], possiblekeys2[k][1]);
-        }
-        exit(-1);
-      }
-    }
-    fclose(f2);
-    
-    // print copy of the input file
-    printf("INPUT FILE %s:\n", sitespecdat[i]);
-    for (line=0; line<lines2; line++){
-      printf("%s = %s\n", input2[line][0], input2[line][1]);
-    }
-
+    lines2=read_file(sitespecdat[i], input2, possiblekeys2, sizeof(possiblekeys2)/sizeof(possiblekeys2[0]));
     searchkey(lines2, input2, "natoms",value, 1);
     ct->sitetype[i].atoms=atoi(value);
     snew(ct->sitetype[i].atom, ct->sitetype[i].atoms);
@@ -704,66 +718,46 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
         snew(ct->sitetype[i].addchr, ct->sitetype[i].bonds);
   
         searchkey(lines2, input2, "nignorechr",value, 1);
-        ptr = strtok(value, " ");
+        split_string_into_int(value, ct->sitetype[i].bonds, ct->sitetype[i].nochrs,  "nignorechr");
         for (j=0; j<ct->sitetype[i].bonds ;j++){
-          if(ptr==NULL){
-            PRINTF("TOO FEW ARGUMENTS FOR NIGNORECHR\n");
-            exit(-1);
-          }
-          ct->sitetype[i].nochrs[j]= atoi(ptr);
           snew(ct->sitetype[i].nochr[j], ct->sitetype[i].nochrs[j]);
-          ptr = strtok(NULL, " ");
         }
+
         searchkey(lines2, input2, "nameignorechr",value, 1);
-        ptr = strtok(value, " ");
+        l=0;
+        for (j=0; j<ct->sitetype[i].bonds ;j++)
+          for (k=0; k<ct->sitetype[i].nochrs[j] ;k++)
+            l++;
+        split_string_into_string(value, l, dummy,  "nameignorechr");
+        l=0;
         for (j=0; j<ct->sitetype[i].bonds ;j++){
           for (k=0; k<ct->sitetype[i].nochrs[j] ;k++){
-            if(ptr==NULL){
-              PRINTF("TOO FEW ARGUMENTS FOR NAMEIGNORECHR\n");
-              exit(-1);
-            }
-            strcpy(ct->sitetype[i].nochr[j][k],ptr);
+            strcpy(ct->sitetype[i].nochr[j][k],dummy[l]);
             PRINTF("Ignoring charges on %s\n",ct->sitetype[i].nochr[j][k]);
-            ptr = strtok(NULL, " ");
+            l++;
           }
         }
         searchkey(lines2, input2, "naddchr",value, 1);
-        ptr = strtok(value, " ");
+        split_string_into_int(value, ct->sitetype[i].bonds, ct->sitetype[i].addchrs,  "naddchr");
         for (j=0; j<ct->sitetype[i].bonds ;j++){
-          if(ptr==NULL){
-            PRINTF("TOO FEW ARGUMENTS FOR NADDCHR\n");
-            exit(-1);
-          }
-          ct->sitetype[i].addchrs[j]= atoi(ptr);
           snew(ct->sitetype[i].addchr[j], ct->sitetype[i].addchrs[j]);
-          ptr = strtok(NULL, " ");
         }
         searchkey(lines2, input2, "totaladdchr",value, 1);
-        ptr = strtok(value, " ");
-        for (j=0; j<ct->sitetype[i].bonds ;j++){
-          if(ptr==NULL){
-            PRINTF("TOO FEW ARGUMENTS FOR TOTALADDCHR\n");
-            exit(-1);
-          }
-          ct->sitetype[i].extracharge[j]=atof(ptr);
-          ptr = strtok(NULL, " ");
-        }
+        split_string_into_double(value, ct->sitetype[i].bonds, ct->sitetype[i].extracharge, "totaladdchr");
+
         searchkey(lines2, input2, "nameaddchr",value, 1);
-        ptr = strtok(value, " ");
-        for (j=0; j<ct->sitetype[i].bonds ;j++){
-          for (k=0; k<ct->sitetype[i].addchrs[j] ;k++){
-            if(ptr==NULL){
-              PRINTF("TOO FEW ARGUMENTS FOR NAMEADDCHR\n");
-              exit(-1);
-            }
-            strcpy(ct->sitetype[i].addchr[j][k],ptr);
-            ptr = strtok(NULL, " ");
-          }
-        }
+        l=0;
+        for (j=0; j<ct->sitetype[i].bonds ;j++)
+          for (k=0; k<ct->sitetype[i].addchrs[j] ;k++)
+            l++;
+        split_string_into_string(value, ct->sitetype[i].bonds, dummy,  "nameaddchr");
+        l=0;
         for (j=0; j<ct->sitetype[i].bonds ;j++){
           PRINTF("Distributing charge of %f over atoms:\n",ct->sitetype[i].extracharge[j]);
           for (k=0; k<ct->sitetype[i].addchrs[j] ;k++){
+            strcpy(ct->sitetype[i].addchr[j][k],dummy[l]);
             PRINTF(" %s \n",ct->sitetype[i].addchr[j][k]);
+            l++;
           }
         }
       }
@@ -785,69 +779,42 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     snew(ct->sitetype[i].lambda_i, ct->sitetype[i].homos);
     
     searchkey(lines2, input2, "fragorbs",value, 1);
-    ptr = strtok(value, " ");
-    for(j = 0; j < ct->sitetype[i].homos; j++){
-      if(ptr==NULL){
-        PRINTF("TOO FEW ARGUMENTS FOR FRAGORBS\n");
-        exit(-1);
-      }
-      ct->sitetype[i].homo[j]=atoi(ptr);
-      ptr = strtok(NULL, " ");
-    }
+    split_string_into_int(value, ct->sitetype[i].homos, ct->sitetype[i].homo, "fragorbs");
     if(ct->sic > 0.0){
       searchkey(lines2, input2, "hubbard",value, 1);
-      ptr = strtok(value, " ");
-      for(j = 0; j < ct->sitetype[i].homos; j++){
-        if(ptr==NULL){
-          PRINTF("TOO FEW ARGUMENTS FOR HUBBARD\n");
-          exit(-1);
-        }
-        ct->sitetype[i].hubbard[j]=atof(ptr);
-        ptr = strtok(NULL, " ");
-      }
+      split_string_into_double(value, ct->sitetype[i].homos, ct->sitetype[i].hubbard, "hubbard");
     }
     if(ct->do_lambda_i==1){
       searchkey(lines2, input2, "lambda_i",value, 1);
-      ptr = strtok(value, " ");
-      for(j = 0; j < ct->sitetype[i].homos; j++){
-        if(ptr==NULL){
-          PRINTF("TOO FEW ARGUMENTS FOR LAMBDA_I\n");
-          exit(-1);
-        }
-        ct->sitetype[i].lambda_i[j]=atof(ptr);
-        ptr = strtok(NULL, " ");
-      }
+      split_string_into_double(value, ct->sitetype[i].homos, ct->sitetype[i].lambda_i, "lambda_i");
     }
     if(ct->delta_q_mode==1){
       snew(ct->sitetype[i].delta_q, ct->sitetype[i].homos);
         snew(ct->sitetype[i].delta_q[0], ct->sitetype[i].homos* ct->sitetype[i].atoms);
       for(j = 1; j < ct->sitetype[i].homos; j++)
         ct->sitetype[i].delta_q[j]=ct->sitetype[i].delta_q[0]+j*ct->sitetype[i].atoms;
+
       searchkey(lines2, input2, "dqresp",value, 1);
-      ptr = strtok(value, " ");
+      l=0;
+      for(j = 0; j < ct->sitetype[i].homos; j++)
+        for(k = 0; k < ct->sitetype[i].atoms; k++)
+          l++;
+      split_string_into_string(value,l, dummy, "dqresp");
+      l=0;
       for(j = 0; j < ct->sitetype[i].homos; j++){
         for(k = 0; k < ct->sitetype[i].atoms; k++){
-          if(ptr==NULL){
-            PRINTF("TOO FEW ARGUMENTS FOR DQRESP\n");
-            exit(-1);
-          }
-          ct->sitetype[i].delta_q[j][k]=atof(ptr);
-          ptr = strtok(NULL, " ");
+          ct->sitetype[i].delta_q[j][k]=atof(dummy[l]);
+          l++;
         }
       }
+
     }
     if (searchkey(lines2, input2, "customocc",value, 0)){
       ct->sitetype[i].do_custom_occ=1;
       snew(ct->sitetype[i].custom_occ, ct->sitetype[i].norb);
-      ptr = strtok(value, " ");
+      split_string_into_double(value, ct->sitetype[i].norb, ct->sitetype[i].custom_occ, "customocc");
       sum = 0.0;
       for(j = 0; j < ct->sitetype[i].norb; j++){
-        if(ptr==NULL){
-          PRINTF("TOO FEW ARGUMENTS FOR CUSTOMOCC\n");
-          exit(-1);
-        }
-        ct->sitetype[i].custom_occ[j]=atof(ptr);
-        ptr = strtok(NULL, " ");
         sum+=ct->sitetype[i].custom_occ[j];
       }
       if((int) sum != ct->sitetype[i].nel){
@@ -860,12 +827,12 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   }
 
   /* read in sites*/
-  searchkey(lines, input, "nsites",value, 1);
+  searchkey(lines1, input1, "nsites",value, 1);
   ct->pool_size=atoi(value);
   ct->sites=ct->pool_size;
-  if(searchkey(lines, input, "zonesize",value, 0)){
+  if(searchkey(lines1, input1, "zonesize",value, 0)){
     ct->sites=atoi(value);
-    if(searchkey(lines, input, "optimizezone",value, 0)){
+    if(searchkey(lines1, input1, "optimizezone",value, 0)){
       if(strcmp(value,"yes")==0||strcmp(value,"on")==0||strcmp(value,"1")==0){
         ct->opt_QMzone=1;
         PRINTF("Will search pool for energetically best site to start. Overwriting start wavefunction\n");
@@ -892,37 +859,24 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   snew(ct->indFO, ct->sites);
   snew(ct->pool_site,ct->pool_size);
 
-  searchkey(lines, input, "sites",value, 1);
-  ptr = strtok(value, " ");
+  searchkey(lines1, input1, "sites",value, 1);
+  split_string_into_string(value, ct->pool_size, dummy, "sites");
   for(i = 0; i < ct->pool_size; i++){
-    if(ptr==NULL){
-      PRINTF("TOO FEW ARGUMENTS FOR SITES\n");
-      exit(-1);
-    }
-    ct->pool_site[i].resnr=atoi(ptr);
+    ct->pool_site[i].resnr=atoi(dummy[i]);
     //ct->pool_site[i].resnr--; //apparently residues are numbered in gromacs starting from 0 but written out as starting from 1  CHANGED IN GROMACS4.6
-    ptr = strtok(NULL, " ");
   }
-  searchkey(lines, input, "sitetypes",value, 1);
-  ptr = strtok(value, " ");
+
+  searchkey(lines1, input1, "sitetypes",value, 1);
+  split_string_into_string(value, ct->pool_size, dummy, "sitetypes");
   for(i = 0; i < ct->pool_size; i++){
-   if(ptr==NULL){
-     PRINTF("TOO FEW ARGUMENTS FOR SITETYPES\n");
-     exit(-1);
-    }
-    ct->pool_site[i].type=atoi(ptr);
+    ct->pool_site[i].type=atoi(dummy[i]);
     ct->pool_site[i].type--; //for convinient numbering in charge-transfer.dat from 1 to #_diffrent_sites
-    ptr = strtok(NULL, " ");
   }
-  searchkey(lines, input, "sitescc",value, 1);
-  ptr = strtok(value, " ");
+
+  searchkey(lines1, input1, "sitescc",value, 1);
+  split_string_into_string(value, ct->pool_size, dummy, "sitescc");
   for(i = 0; i < ct->pool_size; i++){
-    if(ptr==NULL){
-      PRINTF("TOO FEW ARGUMENTS FOR SITESCC\n");
-      exit(-1);
-    }
-    ct->pool_site[i].do_scc=atoi(ptr);
-    ptr = strtok(NULL, " ");
+    ct->pool_site[i].do_scc=atoi(dummy[i]);
   }
 
   /* build sites according to sitetypes */
@@ -1107,16 +1061,10 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 
 
   /* shift of hamilton diagonal elements */
-  if(searchkey(lines, input, "foshift",value, 0)){
+  if(searchkey(lines1, input1, "foshift",value, 0)){
     PRINTF("Applying shift to Hamiltonian:\n");
-    ptr = strtok(value, " ");
+    split_string_into_double(value, ct->dim, ct->fo_shift, "foshift");
     for (i=0; i<ct->dim ;i++){
-      if(ptr==NULL){
-        PRINTF("TOO FEW ARGUMENTS FOR FOSHIFT\n");
-        exit(-1);
-      }
-      ct->fo_shift[i]= atof(ptr);
-      ptr = strtok(NULL, " ");
       PRINTF("  %f eV\n", ct->fo_shift[i]*HARTREE_TO_EV);
     }
   }
@@ -1127,7 +1075,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   if(!(ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
       ct->jobtype == cteESP || ct->jobtype == cteTDA)){
     counter=0;
-    if(searchkey(lines, input, "adiabstart",value, 0)){
+    if(searchkey(lines1, input1, "adiabstart",value, 0)){
       if(strcmp(value,"yes")==0||strcmp(value,"on")==0||strcmp(value,"1")==0){
         counter++;
         ct->adiabstart=1;
@@ -1138,29 +1086,14 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     }else{
       ct->adiabstart=0;
     }
-    if (searchkey(lines, input, "wavefunctionreal",value, 0)){
+    if (searchkey(lines1, input1, "wavefunctionreal",value, 0)){
       counter++;
       ct->adiabstart=0;
       PRINTF("Read the wavefunction:\n");
-      ptr = strtok(value, " ");
-      for (i=0; i<ct->dim ;i++){
-        if(ptr==NULL){
-          PRINTF("TOO FEW ARGUMENTS FOR WAVEFUNCTIONREAL\n");
-          exit(-1);
-        }
-        ct->wf[i]= atof(ptr);
-        ptr = strtok(NULL, " ");
-      }
-      if(searchkey(lines, input, "wavefunctionim",value, 0)){
-        ptr = strtok(value, " ");
-        for (i=0; i<ct->dim ;i++){
-          if(ptr==NULL){
-            PRINTF("TOO FEW ARGUMENTS FOR WAVEFUNCTIONIM\n");
-            exit(-1);
-          }
-          ct->wf[ct->dim+i]= atof(ptr);
-          ptr = strtok(NULL, " ");
-        }
+      split_string_into_double(value,ct->dim, ct->wf,"wavefunctionreal");
+
+      if(searchkey(lines1, input1, "wavefunctionim",value, 0)){
+        split_string_into_double(value,ct->dim, &ct->wf[ct->dim],"wavefunctionreal");
       }
       ct->survival = 0.0;
       for (i=0; i<ct->dim; i++) {
@@ -1184,7 +1117,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     }
   }
 
-  if(searchkey(lines, input, "nnegimpot",value, 0)){
+  if(searchkey(lines1, input1, "nnegimpot",value, 0)){
     PRINTF("Charge taken out of the several FOs by way of negative imaginary potential,\n");
     PRINTF("NEVER TESTET IN THIS VERSION. CHECK SOURCE CODE BEFORE PROCEEDING!\n");
     exit(-1); //TODO I somehow tried to adapt this feature. However, it was initially considered for one Orbital per site and I'm not sure if it will work with several FOs per site.
@@ -1192,23 +1125,17 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     snew(ct->site_neg_imag_pot, ct->neg_imag_pot);
     snew(ct->site_annihilated_occupation, ct->neg_imag_pot);
     
-    searchkey(lines, input, "negimpotrate",value, 1);
+    searchkey(lines1, input1, "negimpotrate",value, 1);
     ct->neg_imag_pot_rate_constant = atof(value);
     PRINTF("   this will be done for %d FOs, with 1/tau = %e au-1 = %f ps-1.\n",
     ct->neg_imag_pot, ct->neg_imag_pot_rate_constant, ct->neg_imag_pot_rate_constant * PS_TO_AU);
 
-    searchkey(lines, input, "negimpotfos",value, 1);
-    ptr = strtok(value, " ");
+    searchkey(lines1, input1, "negimpotfos",value, 1);
+    split_string_into_int(value, ct->neg_imag_pot, ct->site_neg_imag_pot, "negimpotfos");
     for (i=0; i<ct->neg_imag_pot ;i++){
-      if(ptr==NULL){
-        PRINTF("TOO FEW ARGUMENTS FOR NEGIMPOTFOS\n");
-        exit(-1);
-      }
-      ct->site_neg_imag_pot[i]= atoi(ptr);
       ct->site_neg_imag_pot[i]--;
       ct->site_annihilated_occupation[i] = 0.0;
       PRINTF("   FO index no. %d for NIP occupation removal.\n", ct->site_neg_imag_pot[i]);
-      ptr = strtok(NULL, " ");
     }
     if (!(ct->jobtype == cteSCCDYNAMIC || ct->jobtype == cteNONSCCDYNAMIC || ct->jobtype == cteSURFACEHOPPING)) {
       PRINTF("negative imaginary potential is only for SCC NON SFH impelemented.\n");

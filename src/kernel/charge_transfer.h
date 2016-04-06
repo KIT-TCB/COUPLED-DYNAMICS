@@ -103,7 +103,8 @@
 #define SIMPLE_ALMIX (0.01)
 #define ALMIX_ATTENUATOR (0.9)
 #define MAXLINES (50) // maximal length of input file
-#define MAXWIDTH (1500) // maximal width of key and value of input file 
+#define MAXWIDTH (500) // maximal width of key and value of input file (and also width of dummy for reading input)
+#define MAXWIDTH2 (20) // maximal width of dummy for reading input  
 #define MAXSITETYPES (5) // maximal number of different sites
 
 #define NEG_IMAG_POT (1.e-3)  // tau for the negative imaginary potential on the last couple of sites
