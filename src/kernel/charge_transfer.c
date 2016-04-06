@@ -566,6 +566,9 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
       ct->decoherence = 1;
       PRINTF(" - correction for quantum decoherence switched on!\n");
     }
+  } else{
+    PRINTF("Did not understand jobtype.\n");
+    exit(-1);
   }
 
   if(searchkey(lines1, input1, "nstqm",value, 0)){
@@ -632,6 +635,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     }else if(strcmp(value,"onsite")==0){ // former LIQM
       ct->do_lambda_i = 2;
       PRINTF("Emulation of internal relaxation by adding DFTB-QM forces to the force field\n");
+      
     }else if(strcmp(value,"full")==0){  // former LQM
       ct->do_lambda_i = 3;
       PRINTF("Emulation of inter- and intra-site relaxation by adding DFTB-QM forces to the force field\n");
@@ -750,7 +754,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
         for (j=0; j<ct->sitetype[i].bonds ;j++)
           for (k=0; k<ct->sitetype[i].addchrs[j] ;k++)
             l++;
-        split_string_into_string(value, ct->sitetype[i].bonds, dummy,  "nameaddchr");
+        split_string_into_string(value, l, dummy,  "nameaddchr");
         l=0;
         for (j=0; j<ct->sitetype[i].bonds ;j++){
           PRINTF("Distributing charge of %f over atoms:\n",ct->sitetype[i].extracharge[j]);
@@ -877,6 +881,10 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   split_string_into_string(value, ct->pool_size, dummy, "sitescc");
   for(i = 0; i < ct->pool_size; i++){
     ct->pool_site[i].do_scc=atoi(dummy[i]);
+    if(ct->do_lambda_i > 0 && ct->pool_site[i].do_scc!=0){
+      PRINTF("QM-forces were designed for DFTB1 formalism but you want to use DFTB2");
+      exit(-1);
+    }
   }
 
   /* build sites according to sitetypes */
