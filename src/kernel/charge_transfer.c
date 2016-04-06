@@ -542,9 +542,10 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   } else if ((strcmp(value,"per")==0 || strcmp(value,"ped")==0)) {
     ct->jobtype = ctePERSICOSFHOPPING;
     PRINTF("Persico's locally diabatic surface hopping between adiabatic states from Fermi-dist. combination\n");
-    } if (strcmp(value,"ped")==0) {
+    if (strcmp(value,"ped")==0) {
       ct->decoherence = 1;
       PRINTF(" - correction for quantum decoherence switched on!\n");
+    }
   } else if (strcmp(value,"ngl")==0) {
     ct->jobtype = cteNEGFLORENTZ;
     PRINTF("Calculation of electric current with non-equlibrium Green's function approach + Lorentzian functions\n");
@@ -646,12 +647,6 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     if(ct->interval!=1){
       PRINTF("Application of internal relaxation makes only sense if QM calculations are performed every step\n");
       exit(-1);
-    }
-    for(i = 0; i < ct->pool_size; i++){
-      if(ct->do_lambda_i > 0 && ct->pool_site[i].do_scc!=0){
-        PRINTF("QM-forces were designed for DFTB1 formalism but you want to use DFTB2");
-        exit(-1);
-      }
     }
     if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
       ct->jobtype == cteESP || ct->jobtype == cteTDA) {
@@ -881,8 +876,8 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   split_string_into_string(value, ct->pool_size, dummy, "sitescc");
   for(i = 0; i < ct->pool_size; i++){
     ct->pool_site[i].do_scc=atoi(dummy[i]);
-    if(ct->do_lambda_i > 0 && ct->pool_site[i].do_scc!=0){
-      PRINTF("QM-forces were designed for DFTB1 formalism but you want to use DFTB2");
+    if(ct->do_lambda_i > 1 && ct->pool_site[i].do_scc!=0){
+      PRINTF("QM-forces were designed for DFTB1 formalism but you want to use DFTB2\n");
       exit(-1);
     }
   }
