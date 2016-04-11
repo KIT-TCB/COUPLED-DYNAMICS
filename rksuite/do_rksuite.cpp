@@ -153,6 +153,7 @@ typedef struct {
   double esp_scaling_factor;
   int do_lambda_i;
   int do_epol;         /* shall the electronic polarization be calculated? 1==YES, 0==NO */
+  int do_projection;   /* do or do not project the wavefunction at every step onto the new FO basis before propagating */
 
   int neg_imag_pot;
   int *site_neg_imag_pot; /* list of sites (numbered 1, 2, 3...) to apply the negative imaginary potential */

@@ -207,7 +207,10 @@ int read_file(char* file_name, char input[MAXLINES][2][MAXWIDTH], char possiblek
     PRINTF("%s not accessible, exiting!\n", file_name);
     exit(-1);
   }
-  PRINTF("Reading file %s\n", file_name);
+  PRINTF("Searching in file %s for:\n", file_name);
+  for (i=0; i< nkeys; i++){
+    PRINTF("%20s:  %s\n",possiblekeys[i][0], possiblekeys[i][1]);
+  }
 
   /* get length of input file */
   lines=0;
@@ -249,10 +252,7 @@ int read_file(char* file_name, char input[MAXLINES][2][MAXWIDTH], char possiblek
         j=0;
     }
     if (j) {
-      PRINTF("KEYWORD NOT KNOWN: %s\nALLOWED KEYWORDS:\n", input[line][0]);
-      for (i=0; i< nkeys; i++){
-        PRINTF("%20s:  %s\n",possiblekeys[i][0], possiblekeys[i][1]);
-      }
+      PRINTF("KEYWORD NOT KNOWN: %s\n", input[line][0]);
       exit(-1);
     }
   }
@@ -331,7 +331,6 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 #else
 void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mdatoms, charge_transfer_t *ct, char *slko_path, t_state *state) {
 #endif
-  FILE *f, *f2;
   char sitespecdat[MAXSITETYPES][MAXWIDTH], value[MAXWIDTH];
   char possiblekeys1[][2][MAXWIDTH]={
   {"slkopath",  "{Path} to directory of the DFTB Slater-Koster files"},
@@ -361,7 +360,8 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   {"nnegimpot", "Negative imaginary potential. Can be used to annihilate charge."},
   {"negimpotrate", "Rate for charge annihilation."},
   {"negimpotfos", "FOs from which the charge will be annihilated."},
-  {"deltaqmode", "Either add precalculated RESP charges to the force-field to describe the charge-carrier {resp} or use internally obtained DFTB Mulliken-charges {mulliken}"}
+  {"deltaqmode", "Either add precalculated RESP charges to the force-field to describe the charge-carrier {resp} or use internally obtained DFTB Mulliken-charges {mulliken}"},
+  {"projection", "{yes/no} do or do not project the charge carrier wavefunction at every step onto the new FO basis before propagating it."}
   };
 
   char possiblekeys2[][2][MAXWIDTH]={
@@ -392,7 +392,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 
   char input1[MAXLINES][2][MAXWIDTH],input2[MAXLINES][2][MAXWIDTH]; // several lines, 2 collumns (before and after '='), and string of several chars
   char dummy[MAXLINES2][MAXWIDTH];
-  int lines1, lines2, line;
+  int lines1, lines2;
 
   ct->first_step=1;
 #ifdef GMX_MPI
@@ -413,11 +413,10 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   /* set default options */
 
   // either sensible values or "not defined"=-1 for values that have to be specified in the input file and will be checked later.
-  ct->n_avg_ham = 1; // average hamilton over n_avg_ham steps to assimilate fast non-classical vibrations
-  ct->esp_scaling_factor = 1.; // scaling of the electrostatic potential of the environment
-  ct->opt_QMzone=0;
-  ct->neg_imag_pot = 0; //negative imaginary potential to drain the charge at some sites
-  ct->decoherence = 0;
+  //ct->n_avg_ham = 1; // average hamilton over n_avg_ham steps to assimilate fast non-classical vibrations
+  //ct->esp_scaling_factor = 1.; // scaling of the electrostatic potential of the environment
+  //ct->opt_QMzone=0;
+  //ct->neg_imag_pot = 0; //negative imaginary potential to drain the charge at some sites
 
 
   /* evaluate input */
@@ -438,13 +437,13 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     exit(-1);
   }
   if (searchkey(lines1, input1, "offdiagscaling",value, 0)){
-    if(strcmp(value,"yes")==0||strcmp(value,"on")==0){
+    if(strcmp(value,"yes")==0){
       PRINTF("  scaling of off-diagonal elements applied \n");
       switch (ct->is_hole_transfer){
          case 1: ct->offdiag_scaling = OFFDIAG_FACTOR_HOLE; break;// 1.540 
          case 0: ct->offdiag_scaling = OFFDIAG_FACTOR_ELEC; break;// 1.795
       }
-    }else if (strcmp(value,"no")==0||strcmp(value,"off")==0){
+    }else if (strcmp(value,"no")==0){
       ct->offdiag_scaling = 1.0;
       PRINTF("standard hamilton matrix. off-diagonal elements unscaled\n");
     }else{
@@ -484,7 +483,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     ct->esp_scaling_factor = atof(value);
     PRINTF("the electrostatic interaction with MM atoms will be attenuated by a factor of %f\n", ct->esp_scaling_factor);
   }else{
-    ct->esp_scaling_factor=1.0;
+    ct->esp_scaling_factor=1.0; //default
   }
   if (searchkey(lines1, input1, "efield",value, 0)){
     split_string_into_double(value, 3, ct->efield, "efield");
@@ -500,6 +499,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 
   searchkey(lines1, input1, "jobtype",value, 1);
 
+  ct->decoherence = 0;//default is propagator without decoherence
   if (strcmp(value,"scc")==0) {
     ct->jobtype = cteSCCDYNAMIC;
     PRINTF("Fully coupled electron-ion dynamics\n");
@@ -598,7 +598,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     ct->n_avg_ham = atoi(value);
     PRINTF("WARNING: averaging hamilton over %d steps to assimilate fast non-classical vibrations\n This is just for testing, so take care.\n", ct->n_avg_ham);
   }else{
-    ct->n_avg_ham = 1;
+    ct->n_avg_ham = 1; //default
   }
   if(searchkey(lines1, input1, "epol",value, 0)){
     if(strcmp(value,"imp")==0){
@@ -615,6 +615,26 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   }else{
     ct->do_epol=0;  
   }
+
+  if(searchkey(lines1, input1, "projection",value, 0)){
+    if(strcmp(value,"yes")==0){
+      ct->do_projection=1;
+      PRINTF("Projecting the charge carrier wavefunction at every step onto the new FO basis before propagating it.\n");
+    }else if(strcmp(value,"no")==0){ 
+      PRINTF("No projection applied\n");
+    }else{
+      PRINTF("Did not understand projection keyword.\n");
+      exit(-1);
+    }
+    if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
+      ct->jobtype == cteESP || ct->jobtype == cteTDA) {
+      PRINTF("WARNING: selected projection of the charge carrier wavefunction, which makes only sense if there is a charge carrier to project.\n");
+    }
+  }else{
+    ct->do_projection=0; //default
+    PRINTF("No projection applied\n");
+  }
+
   if(searchkey(lines1, input1, "sic",value, 0)){
       ct->sic=atof(value);
       PRINTF("Naive self-interaction correction applied, second-order term scaled by factor %f\n", ct->sic);
@@ -832,10 +852,12 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   if(searchkey(lines1, input1, "zonesize",value, 0)){
     ct->sites=atoi(value);
     if(searchkey(lines1, input1, "optimizezone",value, 0)){
-      if(strcmp(value,"yes")==0||strcmp(value,"on")==0||strcmp(value,"1")==0){
+      if(strcmp(value,"yes")==0){
         ct->opt_QMzone=1;
         PRINTF("Will search pool for energetically best site to start. Overwriting start wavefunction\n");
-      }else if (!(strcmp(value,"no")==0||strcmp(value,"off")==0||strcmp(value,"0")==0)){
+      }else if (strcmp(value,"no")==0){
+        ct->opt_QMzone=0;
+      }else {
         PRINTF("Did not understand optimizezone option.\n");
         exit(-1);
       }
@@ -843,12 +865,15 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
         PRINTF("pool of possible sites has to be larger then the QM zone\n");
         exit(-1);
       }
+    } else {
+      ct->opt_QMzone=0; //default
     }
     if(ct->sitetypes>1 && (ct->pool_size != ct->sites)){
       printf("Adaptive QM zone works only if every site is the same.\n");
       exit(-1);
     }
   }
+
   if (ct->sites == ct->pool_size){
     PRINTF("QM system consists of %d sites:\n", ct->sites);
   }else{
@@ -1079,11 +1104,11 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
       ct->jobtype == cteESP || ct->jobtype == cteTDA)){
     counter=0;
     if(searchkey(lines1, input1, "adiabstart",value, 0)){
-      if(strcmp(value,"yes")==0||strcmp(value,"on")==0||strcmp(value,"1")==0){
+      if(strcmp(value,"yes")==0){
         counter++;
         ct->adiabstart=1;
         PRINTF("Starting from lowest adiabatic state.\n");
-      }else if (strcmp(value,"no")==0||strcmp(value,"off")==0||strcmp(value,"0")==0){
+      }else if (strcmp(value,"no")==0){
         ct->adiabstart=0;
       }
     }else{
@@ -1144,6 +1169,8 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
       PRINTF("negative imaginary potential is only for SCC NON SFH impelemented.\n");
       exit(-1);
     }
+  } else {
+    ct->neg_imag_pot=0; //default
   }
 
   /* all read in and allocated at this point*/
@@ -1483,6 +1510,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 
   ///// JOB SPECIFIC PREPARATIONS /////
   /* NEGF data */
+  /* TODO: THIS WAS ONLY COMMENTED OUT BECAUSE I HAVE NO IDEA ABOUT THESE CALCULATIONS. MAYBE IMPLEMENT NEGF CALCUlATIONS ALSO IN THE CURRENT CODE
   if (ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC) {
     snew(ct->negf_arrays, 1);
     ct->negf_arrays->n[0] = ct->sites;
@@ -1497,7 +1525,8 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     PRINTF("  temp = %lf, n_poles_l = %ld, n_poles_r = %ld\n", ct->negf_arrays->temp[0], ct->negf_arrays->n_poles_l[0], ct->negf_arrays->n_poles_r[0]);
     PRINTF("  gam_l = %lf, eps_l = %lf, w0_l = %lf\n", ct->negf_arrays->gam_l[0], ct->negf_arrays->eps_l[0], ct->negf_arrays->w0_l[0]);
     PRINTF("  gam_r = %lf, eps_r = %lf, w0_r = %lf\n", ct->negf_arrays->gam_r[0], ct->negf_arrays->eps_r[0], ct->negf_arrays->w0_r[0]);
-  }
+  }*/
+
   /* NEGF initialization including initial density matrix */
   if (ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC) {
     PRINTF("Initializing the NEGF calculation\n");

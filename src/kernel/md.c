@@ -862,14 +862,16 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
 
         if (ct->jobtype != cteESP) {
           f_tb_hamiltonian = fopen("TB_HAMILTONIAN.xvg", "w");
-          f_ct_project_wf = fopen("CT_PROJECT_WF.xvg", "w");
-          f_ct_project_wf_ref = fopen("CT_PROJECT_WF_REF.xvg", "w");
           f_ct_ortho_ev = fopen("CT_ORTHO_EV.xvg", "w");
           f_ct_overlap_fo = fopen("CT_OVERLAP_FO.xvg", "w");
           f_ct_overlap_fo_ref = fopen("CT_OVERLAP_FO_REF.xvg", "w");
           if (ct->jobtype==ctePARAMETERS){
             f_ct_spec = fopen("CT_SPEC.xvg", "w");
             f_ct_spec_evec = fopen("CT_SPEC_EVEC.xvg", "w");
+          }
+          if (ct->do_projection){
+            f_ct_project_wf = fopen("CT_PROJECT_WF.xvg", "w");
+            f_ct_project_wf_ref = fopen("CT_PROJECT_WF_REF.xvg", "w");
           }
           if (ct->jobtype==cteTDA)
             f_ct_tda = fopen("CT_TDA.xvg", "w");
@@ -1622,7 +1624,7 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
         * (the neg-imag-potential capability is included in do_rksuite() )
         */
 
-       if(ct->dim > ct->sites){     //if there are degenerated orbitals 
+       if(ct->do_projection){
          printf("start project at %f\n", (double) clock()/CLOCKS_PER_SEC);
          project_wf_on_new_basis(step, dftb, ct, f_ct_project_wf, f_ct_project_wf_ref );
          printf("stop project at %f\n", (double) clock()/CLOCKS_PER_SEC);

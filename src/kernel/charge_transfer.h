@@ -296,6 +296,7 @@ typedef struct {
   double esp_scaling_factor; /* divide the ESP (i.e. the DFTB shift) by this value - emulation of electronic polarization; 1.0 of no ESP scaling */
   int do_lambda_i;     /* shall the inner-sphere reorganization energy be emulated? 1==YES, 0==NO */
   int do_epol;         /* shall the electronic polarization be calculated? 1==YES, 0==NO */
+  int do_projection;   /* do or do not project the wavefunction at every step onto the new FO basis before propagating */
 
   int neg_imag_pot;    /* shall the negative imaginary potential be applied? 0==NO, if > 0 then it means the number of sites to be applied on */
   int *site_neg_imag_pot; /* list of sites (numbered 1, 2, 3...) to apply the negative imaginary potential */
