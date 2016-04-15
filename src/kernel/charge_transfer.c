@@ -583,6 +583,13 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     ct->interval = 1;
   }
 
+  if(searchkey(lines1, input1, "nstaverage",value, 0)){
+    ct->n_avg_ham = atoi(value);
+    PRINTF("WARNING: averaging hamilton over %d steps to assimilate fast non-classical vibrations\n This is just for testing, so take care.\n", ct->n_avg_ham);
+  }else{
+    ct->n_avg_ham = 1; //default
+  }
+
   if(searchkey(lines1, input1, "tfermi",value, 0)){
     if (ct->jobtype == cteFERMI || ct->jobtype == cteFERMIADIABATIC || ct->jobtype == cteBORNOPPENHEIMER || ct->jobtype == cteFERMISFHOPPING || ct->jobtype == cteTULLYFEWESTSWITCHES
         || ct->jobtype == ctePERSICOSFHOPPING) {
@@ -594,105 +601,104 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
     }
   }
 
-  if(searchkey(lines1, input1, "nstaverage",value, 0)){
-    ct->n_avg_ham = atoi(value);
-    PRINTF("WARNING: averaging hamilton over %d steps to assimilate fast non-classical vibrations\n This is just for testing, so take care.\n", ct->n_avg_ham);
-  }else{
-    ct->n_avg_ham = 1; //default
-  }
-  if(searchkey(lines1, input1, "epol",value, 0)){
-    if(strcmp(value,"imp")==0){
-      ct->do_epol=1;
-      PRINTF("implicit electronic polarization applied (Born model)\n");
-    }else{
-      PRINTF("Did not understand electronic polarization model. Use IMP for born-like implicit electronic polarization.\n");
-      exit(-1);
-    }
-    if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
-      ct->jobtype == cteESP || ct->jobtype == cteTDA) {
-      PRINTF("WARNING: specified electronic polarization, which makes only sense for jobtypes with actual charge in the system.\n");
-    }
-  }else{
-    ct->do_epol=0;  
-  }
 
-  if(searchkey(lines1, input1, "projection",value, 0)){
-    if(strcmp(value,"yes")==0){
-      ct->do_projection=1;
-      PRINTF("Projecting the charge carrier wavefunction at every step onto the new FO basis before propagating it.\n");
-    }else if(strcmp(value,"no")==0){ 
-      PRINTF("No projection applied\n");
-    }else{
-      PRINTF("Did not understand projection keyword.\n");
-      exit(-1);
-    }
-    if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
-      ct->jobtype == cteESP || ct->jobtype == cteTDA) {
-      PRINTF("WARNING: selected projection of the charge carrier wavefunction, which makes only sense if there is a charge carrier to project.\n");
-    }
-  }else{
-    ct->do_projection=0; //default
-    PRINTF("No projection applied\n");
-  }
+  // search keys that are relevant when an actual charge is in the system //
+  if(!(ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
+      ct->jobtype == cteESP || ct->jobtype == cteTDA)){
 
-  if(searchkey(lines1, input1, "sic",value, 0)){
-      ct->sic=atof(value);
-      PRINTF("Naive self-interaction correction applied, second-order term scaled by factor %f\n", ct->sic);
+    if(searchkey(lines1, input1, "epol",value, 0)){
+      if(strcmp(value,"imp")==0){
+        ct->do_epol=1;
+        PRINTF("implicit electronic polarization applied (Born model)\n");
+      }else{
+        PRINTF("Did not understand electronic polarization model. Use IMP for born-like implicit electronic polarization.\n");
+        exit(-1);
+      }
       if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
         ct->jobtype == cteESP || ct->jobtype == cteTDA) {
-        PRINTF("WARNING: specified self interaction corrction (SIC), which makes only sense for jobtypes with actual charge in the system.\n");
+        PRINTF("WARNING: specified electronic polarization, which makes only sense for jobtypes with actual charge in the system.\n");
       }
-  }else{
-    ct->sic =0.0;
-    PRINTF("Omitting second-order terms.\n");
-  }
-  if(searchkey(lines1, input1, "internalrelax",value, 0)){
-    if(strcmp(value,"no")==0){ 
-      ct->do_lambda_i = 0;
+    }else{
+      ct->do_epol=0;  //default
+    }
+  
+    if(searchkey(lines1, input1, "projection",value, 0)){
+      if(strcmp(value,"yes")==0){
+        ct->do_projection=1;
+        PRINTF("Projecting the charge carrier wavefunction at every step onto the new FO basis before propagating it.\n");
+      }else if(strcmp(value,"no")==0){ 
+        PRINTF("No projection applied\n");
+      }else{
+        PRINTF("Did not understand projection keyword.\n");
+        exit(-1);
+      }
+      if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
+        ct->jobtype == cteESP || ct->jobtype == cteTDA) {
+        PRINTF("WARNING: selected projection of the charge carrier wavefunction, which makes only sense if there is a charge carrier to project.\n");
+      }
+    }else{
+      ct->do_projection=0; //default
+      PRINTF("No projection applied\n");
+    }
+  
+    if(searchkey(lines1, input1, "sic",value, 0)){
+        ct->sic=atof(value);
+        PRINTF("Naive self-interaction correction applied, second-order term scaled by factor %f\n", ct->sic);
+        if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
+          ct->jobtype == cteESP || ct->jobtype == cteTDA) {
+          PRINTF("WARNING: specified self interaction corrction (SIC), which makes only sense for jobtypes with actual charge in the system.\n");
+        }
+    }else{
+      ct->sic =0.0;  //default
+      PRINTF("Omitting second-order terms.\n");
+    }
+    if(searchkey(lines1, input1, "internalrelax",value, 0)){
+      if(strcmp(value,"no")==0){ 
+        ct->do_lambda_i = 0;
+        PRINTF("No inner-sphere reorganization energy\n");
+      }else if(strcmp(value,"parameter")==0){ // former L_I
+        ct->do_lambda_i = 1;
+        PRINTF("Emulation of inner-sphere reorganization energy with precalculated parameter.\n");
+      }else if(strcmp(value,"onsite")==0){ // former LIQM
+        ct->do_lambda_i = 2;
+        PRINTF("Emulation of internal relaxation by adding DFTB-QM forces to the force field\n");
+        
+      }else if(strcmp(value,"full")==0){  // former LQM
+        ct->do_lambda_i = 3;
+        PRINTF("Emulation of inter- and intra-site relaxation by adding DFTB-QM forces to the force field\n");
+      }else{
+        PRINTF("Did not understand relaxation model.\n");
+        exit(-1);
+      }
+      if(ct->interval!=1){
+        PRINTF("Application of internal relaxation makes only sense if QM calculations are performed every step\n");
+        exit(-1);
+      }
+      if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
+        ct->jobtype == cteESP || ct->jobtype == cteTDA) {
+        PRINTF("WARNING: specified internal relaxation, which makes only sense for jobtypes with actual charge in the system.\n");
+      }
+    }else{
+      ct->do_lambda_i = 0;  //default
       PRINTF("No inner-sphere reorganization energy\n");
-    }else if(strcmp(value,"parameter")==0){ // former L_I
-      ct->do_lambda_i = 1;
-      PRINTF("Emulation of inner-sphere reorganization energy with precalculated parameter.\n");
-    }else if(strcmp(value,"onsite")==0){ // former LIQM
-      ct->do_lambda_i = 2;
-      PRINTF("Emulation of internal relaxation by adding DFTB-QM forces to the force field\n");
-      
-    }else if(strcmp(value,"full")==0){  // former LQM
-      ct->do_lambda_i = 3;
-      PRINTF("Emulation of inter- and intra-site relaxation by adding DFTB-QM forces to the force field\n");
-    }else{
-      PRINTF("Did not understand relaxation model.\n");
-      exit(-1);
     }
-    if(ct->interval!=1){
-      PRINTF("Application of internal relaxation makes only sense if QM calculations are performed every step\n");
-      exit(-1);
-    }
-    if (ct->jobtype == ctePARAMETERS || ct->jobtype == cteNEGFLORENTZ || ct->jobtype == cteNEGFLORENTZNONSCC ||
-      ct->jobtype == cteESP || ct->jobtype == cteTDA) {
-      PRINTF("WARNING: specified internal relaxation, which makes only sense for jobtypes with actual charge in the system.\n");
-    }
-  }else{
-    ct->do_lambda_i = 0;
-    PRINTF("No inner-sphere reorganization energy\n");
-  }
 
-  if(searchkey(lines1, input1, "deltaqmode",value, 0)){
-    if(strcmp(value,"mulliken")==0){
-      ct->delta_q_mode=0;
-      PRINTF("Representing the charge carrier with Mulliken charges.");
-    }else if(strcmp(value,"resp")==0){
-      ct->delta_q_mode=1;
-      PRINTF("Representing the charge carrier with RESP charges.");
+    if(searchkey(lines1, input1, "deltaqmode",value, 0)){
+      if(strcmp(value,"mulliken")==0){
+        ct->delta_q_mode=0;
+        PRINTF("Representing the charge carrier with Mulliken charges.");
+      }else if(strcmp(value,"resp")==0){
+        ct->delta_q_mode=1;
+        PRINTF("Representing the charge carrier with RESP charges.");
+      }else{
+        PRINTF("UNKOWN OPTION FOR DELTAQMODE");
+        exit(-1);
+      }
     }else{
-      PRINTF("UNKOWN OPTION FOR DELTAQMODE");
-      exit(-1);
+        ct->delta_q_mode=0; //default
+        PRINTF("Representing the charge carrier with Mulliken charges.");
     }
-  }else{
-      ct->delta_q_mode=0;
-      PRINTF("Representing the charge carrier with Mulliken charges.");
   }
-
 
 
   /* build QM system */
@@ -738,45 +744,53 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   
         searchkey(lines2, input2, "nignorechr",value, 1);
         split_string_into_int(value, ct->sitetype[i].bonds, ct->sitetype[i].nochrs,  "nignorechr");
+        counter=0;
         for (j=0; j<ct->sitetype[i].bonds ;j++){
           snew(ct->sitetype[i].nochr[j], ct->sitetype[i].nochrs[j]);
+          counter+=ct->sitetype[i].nochrs[j];
         }
-
-        searchkey(lines2, input2, "nameignorechr",value, 1);
-        l=0;
-        for (j=0; j<ct->sitetype[i].bonds ;j++)
-          for (k=0; k<ct->sitetype[i].nochrs[j] ;k++)
-            l++;
-        split_string_into_string(value, l, dummy,  "nameignorechr");
-        l=0;
-        for (j=0; j<ct->sitetype[i].bonds ;j++){
-          for (k=0; k<ct->sitetype[i].nochrs[j] ;k++){
-            strcpy(ct->sitetype[i].nochr[j][k],dummy[l]);
-            PRINTF("Ignoring charges on %s\n",ct->sitetype[i].nochr[j][k]);
-            l++;
+        if (counter > 0){ //if there are any charges to ignore at all
+          searchkey(lines2, input2, "nameignorechr",value, 1);
+          l=0;
+          for (j=0; j<ct->sitetype[i].bonds ;j++)
+            for (k=0; k<ct->sitetype[i].nochrs[j] ;k++)
+              l++;
+          split_string_into_string(value, l, dummy,  "nameignorechr");
+          l=0;
+          for (j=0; j<ct->sitetype[i].bonds ;j++){
+            for (k=0; k<ct->sitetype[i].nochrs[j] ;k++){
+              strcpy(ct->sitetype[i].nochr[j][k],dummy[l]);
+              PRINTF("Ignoring charges on %s\n",ct->sitetype[i].nochr[j][k]);
+              l++;
+            }
           }
         }
+
         searchkey(lines2, input2, "naddchr",value, 1);
         split_string_into_int(value, ct->sitetype[i].bonds, ct->sitetype[i].addchrs,  "naddchr");
+        counter=0;
         for (j=0; j<ct->sitetype[i].bonds ;j++){
           snew(ct->sitetype[i].addchr[j], ct->sitetype[i].addchrs[j]);
+          counter+= ct->sitetype[i].addchrs[j];
         }
-        searchkey(lines2, input2, "totaladdchr",value, 1);
-        split_string_into_double(value, ct->sitetype[i].bonds, ct->sitetype[i].extracharge, "totaladdchr");
+        if (counter > 0){ //if there are any charges to add at all
+          searchkey(lines2, input2, "totaladdchr",value, 1);
+          split_string_into_double(value, ct->sitetype[i].bonds, ct->sitetype[i].extracharge, "totaladdchr");
 
-        searchkey(lines2, input2, "nameaddchr",value, 1);
-        l=0;
-        for (j=0; j<ct->sitetype[i].bonds ;j++)
-          for (k=0; k<ct->sitetype[i].addchrs[j] ;k++)
-            l++;
-        split_string_into_string(value, l, dummy,  "nameaddchr");
-        l=0;
-        for (j=0; j<ct->sitetype[i].bonds ;j++){
-          PRINTF("Distributing charge of %f over atoms:\n",ct->sitetype[i].extracharge[j]);
-          for (k=0; k<ct->sitetype[i].addchrs[j] ;k++){
-            strcpy(ct->sitetype[i].addchr[j][k],dummy[l]);
-            PRINTF(" %s \n",ct->sitetype[i].addchr[j][k]);
-            l++;
+          searchkey(lines2, input2, "nameaddchr",value, 1);
+          l=0;
+          for (j=0; j<ct->sitetype[i].bonds ;j++)
+            for (k=0; k<ct->sitetype[i].addchrs[j] ;k++)
+              l++;
+          split_string_into_string(value, l, dummy,  "nameaddchr");
+          l=0;
+          for (j=0; j<ct->sitetype[i].bonds ;j++){
+            PRINTF("Distributing charge of %f over atoms:\n",ct->sitetype[i].extracharge[j]);
+            for (k=0; k<ct->sitetype[i].addchrs[j] ;k++){
+              strcpy(ct->sitetype[i].addchr[j][k],dummy[l]);
+              PRINTF(" %s \n",ct->sitetype[i].addchr[j][k]);
+              l++;
+            }
           }
         }
       }
@@ -2341,26 +2355,25 @@ void prepare_charge_transfer(matrix state_box, t_mdatoms *mdatoms, dftb_t *dftb,
   }
 // */
 
+
 //write out total QM zone
-/*
  if (ct->first_step){
-  char c;
-  printf("%d \n", dftb->phase2.nn);
-  printf("Complex .xyz\n");
-  for (j=0; j<dftb->phase2.nn; j++) {
-    switch (dftb->phase2.izp[j]) {
-      case 0: c = 'C'; break;
-      case 1: c = 'H'; break;
-      case 2: c = 'N'; break;
-      case 3: c = 'O'; break;
-      case 4: c = 'S'; break;
-      case 5: c = 'F'; break;
-      default: c = 'X'; break;
-    }
-    printf("%c %12.7f%12.7f%12.7f\n", c, dftb->phase2.x[j][0]/NM_TO_BOHR*10, dftb->phase2.x[j][1]/NM_TO_BOHR*10, dftb->phase2.x[j][2]/NM_TO_BOHR*10);
-  }
-  }
-// */
+   char c;
+   printf("%d \n", dftb->phase2.nn);
+   printf("Complex .xyz\n");
+   for (j=0; j<dftb->phase2.nn; j++) {
+     switch (dftb->phase2.izp[j]) {
+       case 0: c = 'C'; break;
+       case 1: c = 'H'; break;
+       case 2: c = 'N'; break;
+       case 3: c = 'O'; break;
+       case 4: c = 'S'; break;
+       case 5: c = 'F'; break;
+       default: c = 'X'; break;
+     }
+     printf("%c %12.7f%12.7f%12.7f\n", c, dftb->phase2.x[j][0]/NM_TO_BOHR*10, dftb->phase2.x[j][1]/NM_TO_BOHR*10, dftb->phase2.x[j][2]/NM_TO_BOHR*10);
+   }
+ }
 
   /* get the center of mass of every fragment as well as of the complex */
   for (i=0; i<ct->sites; i++) {
