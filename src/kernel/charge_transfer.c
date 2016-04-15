@@ -195,7 +195,11 @@ int searchkey(int lines, char input[MAXLINES][2][MAXWIDTH], char *key , char val
   }
 }
 
+#ifdef GMX_MPI
+int read_file(char* file_name, char input[MAXLINES][2][MAXWIDTH], char possiblekeys[][2][MAXWIDTH], int nkeys, int ct_mpi_rank){
+#else
 int read_file(char* file_name, char input[MAXLINES][2][MAXWIDTH], char possiblekeys[][2][MAXWIDTH], int nkeys){
+#endif
   int i,j;
   int lines, ch, line, len;
   FILE *f;
@@ -283,8 +287,8 @@ int split_string_into_double(char value[MAXWIDTH],int n, double* target, char* n
     ptr = strtok (NULL, " ");
     i++;
   }
-  if(i>n){PRINTF("TOO MANY ARGUMENTS FOR %s\n", name); exit(-1);}
-  else if(i<n){PRINTF("TOO FEW ARGUMENTS FOR %s\n", name); exit(-1);} 
+  if(i>n){printf("TOO MANY ARGUMENTS FOR %s\n", name); exit(-1);}
+  else if(i<n){printf("TOO FEW ARGUMENTS FOR %s\n", name); exit(-1);} 
   else return 0;
 }
 
@@ -300,8 +304,8 @@ int split_string_into_int(char value[MAXWIDTH],int n, int* target, char* name){
     ptr = strtok (NULL, " ");
     i++;
   }
-  if(i>n){PRINTF("TOO MANY ARGUMENTS FOR %s\n", name); exit(-1);}
-  else if(i<n){PRINTF("TOO FEW ARGUMENTS FOR %s\n", name); exit(-1);} 
+  if(i>n){printf("TOO MANY ARGUMENTS FOR %s\n", name); exit(-1);}
+  else if(i<n){printf("TOO FEW ARGUMENTS FOR %s\n", name); exit(-1);} 
   else return 0;
 }
 int split_string_into_string(char value[MAXWIDTH],int n, char target[][MAXWIDTH], char* name){
@@ -315,8 +319,8 @@ int split_string_into_string(char value[MAXWIDTH],int n, char target[][MAXWIDTH]
     ptr = strtok (NULL, " ");
     i++;
   }
-  if(i>n){PRINTF("TOO MANY ARGUMENTS FOR %s\n", name); exit(-1);}
-  else if(i<n){PRINTF("TOO FEW ARGUMENTS FOR %s\n", name); exit(-1);} 
+  if(i>n){printf("TOO MANY ARGUMENTS FOR %s\n", name); exit(-1);}
+  else if(i<n){printf("TOO FEW ARGUMENTS FOR %s\n", name); exit(-1);} 
   else return 0;
 }
 
@@ -406,7 +410,11 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 
 
   /* Get input from file charge-transfer.dat */
+#ifdef GMX_MPI
+  lines1=read_file("charge-transfer.dat", input1, possiblekeys1, sizeof(possiblekeys1)/sizeof(possiblekeys1[0]), ct_mpi_rank);
+#else
   lines1=read_file("charge-transfer.dat", input1, possiblekeys1, sizeof(possiblekeys1)/sizeof(possiblekeys1[0]));
+#endif
 
 
 
@@ -713,7 +721,11 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   split_string_into_string(value,ct->sitetypes, sitespecdat, "typefiles");
 
   for (i=0; i<ct->sitetypes ;i++){
+#ifdef GMX_MPI
+    lines2=read_file(sitespecdat[i], input2, possiblekeys2, sizeof(possiblekeys2)/sizeof(possiblekeys2[0]), ct_mpi_rank);
+#else
     lines2=read_file(sitespecdat[i], input2, possiblekeys2, sizeof(possiblekeys2)/sizeof(possiblekeys2[0]));
+#endif
     searchkey(lines2, input2, "natoms",value, 1);
     ct->sitetype[i].atoms=atoi(value);
     snew(ct->sitetype[i].atom, ct->sitetype[i].atoms);
