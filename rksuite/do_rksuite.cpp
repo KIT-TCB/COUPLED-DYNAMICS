@@ -56,18 +56,6 @@ typedef struct {
 } ct_site_t;
 
 typedef struct {
-  double **U,   //unitary transformation matrix = alignment
-         *sij,
-         *evec,
-         *work,
-         *iwork,
-         *eval,
-         *issupz;
-  long lwork,
-       liwork;
-} align_t;
-
-typedef struct {
   double *in,
          *evec,
          *work,
@@ -201,7 +189,6 @@ typedef struct {
   double **per_diab_hamiltonian;
   int decoherence;     /* shall the decoherence correction be applied? 0==NO, 1==YES */
   ct_negf_lorentz_t *negf_arrays;
-  align_t align;
   dvec efield;  // external electric field
   int first_step; // is first time QM calculations? may differ from "step==0" from gromacs-steps in case of reruns. general purpose variable can be used by different routines (compared to tfs_initialization_step)
   double *born_overlap; //overlap used in cteBORNOPPENHEIMER

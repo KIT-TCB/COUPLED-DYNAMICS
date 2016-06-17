@@ -64,11 +64,17 @@ static long dsygv(long itype, char jobz, char uplo, long n, double *a, long lda,
   return info;
 }
 
-/* NDIM = NORB !!! */
 
-int run_dftb1(charge_transfer_t *ct, dftb_t *dftb, int ibase) // i - nucleobase to be calculated
-// int eglcao(int nn, double x[NNDIM][3], double *eel, int *miter, double qmat[NNDIM], int phase)
-{
+
+int run_dftb1(charge_transfer_t *ct, dftb_t *dftb, int ibase) {
+/* This function performs a standard DFTB calculation of a single fragment */
+
+// PARAMETERS:
+// ct    = (in) main data structure with information about the charge transfer calculation
+// dftb  = (in) main data structure for DFTB calculations
+// ibase = (in) the index of the fragment 
+////////////////////////////////////////////////////////////////////////
+
   const double scftol = 1.e-7;
   /* OLD VALUE WAS: const double scftol = 1.e-9;
    * we do not need it most likely,

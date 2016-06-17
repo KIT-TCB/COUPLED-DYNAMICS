@@ -759,6 +759,12 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
         fprintf(fplog, "\n");
     }
 
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// START OF CHARGE-TRANSFER CODE BLOCK
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /* TOMAS KUBAR
      * initialize the charge transfer calculation
      */
@@ -769,12 +775,12 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
     if (ct_mpi_size>1 && ct_mpi_rank==0) snew(ct_mpi_gathered, ct_mpi_size);
     printf("MPI Initialization on node %d of %d done\n", ct_mpi_rank+1, ct_mpi_size);
 #endif
-// A.HECK //
     snew(ct_atoms,1);
 #ifdef GMX_MPI
   if (ct_mpi_rank == 0) {
       *ct_atoms = gmx_mtop_global_atoms(top_global); //expands the topology. now arrays in struct t_atoms contain all atoms. in top_global they are grouped together in moltypes. only possible on rank0. relevant data has to be sent to other nodes.
       snew(ct_atoms->pdbinfo, ct_atoms->nr); //pdb files can be handy for special output where e.g. charge is written in bfactor which can be visualized with VMD 
+
     if(PROTEIN){ 
       printf("start protein preprocessing\n");
       //snew(ct_atoms2,1);
@@ -794,7 +800,9 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
       fclose(f_ct_preprocessor);
 */
  //     write_sto_conf("preprocessor.gro", ".gro file to check residues", ct_atoms,  state_global->x, NULL, -1, NULL);
-    }
+    } 
+
+
     for (i=1; i < ct_mpi_size; i++){
       MPI_Send(&ct_atoms->nres, 1, MPI_INT, i, 200+i, ct_mpi_comm);
       MPI_Send(&ct_atoms->nr, 1, MPI_INT, i, 300+i, ct_mpi_comm);
@@ -832,7 +840,6 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
     ct_atoms = protein_preprocessor(ct_atoms,state_global); //changes residues for proteins
   }
 #endif
-// END A.HECK //
     snew(ct, 1);
     snew(dftb, 1);
     snew(x_ct, state_global->natoms);
@@ -936,7 +943,9 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
 #ifdef GMX_MPI
     }
 #endif
-    /* END TOMAS KUBAR */
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// END OF CHARGE-TRANSFER CODE BLOCK
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     /* safest point to do file checkpointing is here.  More general point would be immediately before integrator call */
 #ifdef GMX_FAHCORE
@@ -1300,9 +1309,10 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
 
 		GMX_MPE_LOG(ev_timestep2);
 
-		/* TOMAS KUBAR
-		 * CHARGE TRANSFER
-		 */
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// START OF CHARGE-TRANSFER CODE BLOCK
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                 clock_gettime(CLOCK_MONOTONIC, &time_1); //is here to measure the time of al QM stuff in one step
 
 		/* do it all if we have a real simulation, or we want to calculate parameters in this step */
@@ -1898,7 +1908,7 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
     get_MM_params(ct, dftb);
     #endif            
 
-    /* map the hole on the atomic charges - first check the charges */
+    /* map the charge carrier on the atomic charges - first check the charges */
     counter=0;
     for (i=0; i<ct->sites; i++) {
       // printf("Site %d, charges top_global and mdatoms\n", i);
@@ -1935,7 +1945,12 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
    if (ct_mpi_rank==0)
      print_time_difference("TOTAL QM TIME[ns]:", time_1, time_end);
   ct->first_step = 0; 
-  /* END TOMAS KUBAR */
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// END OF CHARGE-TRANSFER CODE BLOCK
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
 
         /* We write a checkpoint at this MD step when:
          * either at an NS step when we signalled through gs,
@@ -2045,11 +2060,13 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
                      (bNS ? GMX_FORCE_NS : 0) | force_flags);
 
 
-/*********************************************************************************/
-          //add QM forces to relax site geometry
-/*********************************************************************************/
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// START OF CHARGE-TRANSFER CODE BLOCK
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//add QM forces to relax site geometry
 //TODO: this way to add forces is not completely correct. There are differences in simulations on single and multiple nodes. This is, however, already the case with normal GROMACS but now more pronounced.
-//forces should be added somewhere INSIDE do_force. probably do_force_lowlevel()
+//forces should be added somewhere INSIDE do_force(). probably do_force_lowlevel()
 
             if ( ct->do_lambda_i==2 || ct->do_lambda_i==3) 
               for(i=mdatoms->start;i<mdatoms->start+mdatoms->homenr;i++) //iterate over home atoms
@@ -2080,9 +2097,10 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
                }
               }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// END OF CHARGE-TRANSFER CODE BLOCK
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
- 
-/*********************************************************************************/
 
         }
 
@@ -2444,39 +2462,6 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
             wallcycle_stop(wcycle, ewcTRAJ);
         }
         GMX_MPE_LOG(ev_output_finish);
-
-        /* TOMAS KUBAR - then, this is not necessary...
-        if (!(mdof_flags & (MDOF_X | MDOF_XTC)))
-        {
-            ct_collect_x(cr, state_global);
-        }
-         * but still we try to communicate coordinates:
-         */
-         /*
-#ifdef GMX_MPI
-        if (MASTER(cr))
-        {
-            for (i=1; i<ct_mpi_size; i++)
-            {
-                MPI_Send(state_global->x, 3 * top_global->natoms, GMX_MPI_REAL, i, 300+i, ct_mpi_comm);
-                printf("Data of size %d sent to rank %d\n", 3 * top_global->natoms, i);
-            }
-        }
-        else
-        {
-            return_value = MPI_Recv(state_global->x, 3 * top_global->natoms, GMX_MPI_REAL, 0, 300 + ct_mpi_rank, ct_mpi_comm, &ct_mpi_status);
-            if (!return_value)
-                printf("Data of size %d received on rank %d\n", 3 * top_global->natoms, ct_mpi_rank);
-            else
-                printf("Error receiving data on rank %d\n", ct_mpi_rank);
-        }
-        for (i=0; i<10; i++)
-        {
-            printf("rank%d atom%d %12.7f%12.7f%12.7f\n", ct_mpi_rank, i, state_global->x[i][XX]*10, state_global->x[i][YY]*10, state_global->x[i][ZZ]*10);
-        }
-#endif
-*/
-        /* END TOMAS KUBAR */
 
         /* kludge -- virial is lost with restart for NPT control. Must restart */
         if (bStartingFromCpt && bVV)
@@ -2911,6 +2896,10 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
         }
         /* #########  END PREPARING EDR OUTPUT  ###########  */
 
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// START OF CHARGE-TRANSFER CODE BLOCK
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /* TOMAS KUBAR
          *  energies
          */
@@ -2949,7 +2938,9 @@ write_sto_conf("CT.pdb", "written by charge transfer code", ct_atoms, x_ct, NULL
 #ifdef GMX_MPI
         }
 #endif
-        /* END TOMAS KUBAR */
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// END OF CHARGE-TRANSFER CODE BLOCK
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         /* Time for performance */
         if (((step % stepout) == 0) || bLastStep)

@@ -24,7 +24,8 @@ if [ -e $progpath/mdrun ] ;then tests=$tests" non-mpi"; fi
 echo "Testing program in $progpath"
 for run in $tests
 do
-  rm $dir/$run/* -f
+  rm $dir/$run -rf 
+  mkdir $dir/$run
   cd $dir/$run
   cp $dir/rerun.trr $dir/charge-transfer.dat $dir/mol.spec $dir/ct.tpr .
 
@@ -35,10 +36,15 @@ do
   else 
     mpirun -np 1 "$progpath/mdrun_mpi -pd -rerun rerun.trr -s ct.tpr" > out.dat 2> /dev/null
   fi
-  
-  awk '{for (i=1; i<=NF; i++ ){ printf "%7.3f ", $i} ; print ""}' TB_HAMILTONIAN.xvg > significant_TB_HAMILTONIAN.xvg
-  differences=`diff $dir/expected_TB_HAMILTONIAN.xvg $dir/$run/significant_TB_HAMILTONIAN.xvg | wc -l` 
-  if [ $differences != 0 ]; then echo "FAILED TEST   $run" ;else echo "PASSED TEST   $run" ; fi
+
+  if [ -e $dir/$run/TB_HAMILTONIAN.xvg ] 
+  then
+    awk '{for (i=1; i<=NF; i++ ){ printf "%7.3f ", $i} ; print ""}' TB_HAMILTONIAN.xvg > significant_TB_HAMILTONIAN.xvg
+    differences=`diff $dir/expected_TB_HAMILTONIAN.xvg $dir/$run/significant_TB_HAMILTONIAN.xvg | wc -l` 
+    if [ $differences != 0 ]; then echo "FAILED TEST   $run" ;else echo "PASSED TEST   $run" ; fi
+  else 
+    echo "FAILED TEST   $run"
+  fi
 done
 
 

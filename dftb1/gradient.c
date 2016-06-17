@@ -7,9 +7,17 @@
 #define CUB(x) ((x)*(x)*(x))
 #define QRT(x) ((x)*(x)*(x)*(x))
 
-void offdiag_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t *ct)
-{
-//calculates the fraction of the HOMO orbital to the total grad on the neutral molecule
+void offdiag_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t *ct){
+/* calculates how a missing(additional) electron, which is distributed over several HOMO(LUMO) of neighboring fragments gives rise to attracting or repulsive forces, 
+   depending on bonding or antibonding linear combination of FOs */
+
+// PARAMETERS:
+// dftb  = (in) main data structure for DFTB calculations
+// x     = (in) coordinates of all atoms of the complex
+// grad  = (out) gradient vector for all atoms of the complex
+// ct    = (in) main data structure with information about the charge transfer calculation
+////////////////////////////////////////////////////////////////////////
+
   int i, j, k, l, izpj, izpk, site_i, site_j, u , v, ii, ifo, iao;
   int m, n, indj, indk, lj, mj, nu, lk, mk, mu;
   double ocmcc, xhelp, dgrh, dgrs, dgr, dgr3, dist;
@@ -152,9 +160,17 @@ void offdiag_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t 
 }
 
 
-void usual_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t *ct, int site_i)
-{
-//calculates the fraction of the HOMO orbital to the total grad on the neutral molecule
+void usual_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t *ct, int site_i){
+/* calculates the fraction of the HOMO(LUMO) orbital to the total gradient of the neutral fragment 
+   this can be seen as approximative deltaForce term between the neutral reference system and the charged one. */
+
+// PARAMETERS:
+// dftb   = (in) main data structure for DFTB calculations
+// x      = (in) coordinates of all atoms of this fragment
+// grad   = (out) gradient vector for all atoms of this fragment
+// ct     = (in) main data structure with information about the charge transfer calculation
+// site_i = (in) index of the fragment
+////////////////////////////////////////////////////////////////////////
   int i, j, k, izpj, izpk;
   int m, n, indj, indk, lj, mj, nu, lk, mk, mu;
   double ocmcc, xhelp, dgrh, dgrs, dgr, dgr3;
@@ -282,10 +298,7 @@ void usual_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t *c
 }
 
 
-void gamma_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t *ct, int site_i)
-//void gamma_gradient(int nn, dvec *x, int *izp, double *uhubb, double *uhder,
-//              int *izpxh, double zeta, double *qdiff, int sccmode, dvec *grad)
-{
+void gamma_gradient_homo(dftb_t *dftb, dvec *x, dvec *grad, charge_transfer_t *ct, int site_i){
 //calculates the fraction of the HOMO orbital to the total grad on the neutral molecule
 //total grad is grad of charged system minus grad of neutral one
         int ix,k,j,l;

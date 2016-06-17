@@ -4,18 +4,15 @@
 #include"charge_transfer.h"
 #include"external-and-prototypes.h"
 
-/* ********************************************************************* */
-/*
+int run_dftb2(charge_transfer_t *ct, dftb_t *dftb) {
+/* This function performs DFTB calculations of the complex consisting of several fragments.
+   It takes the results from run_dftb1() and constructs an orthogonal "coarse-grained" Hamiltonian in the FO basis*/
 
-     PHASE 2 FOR CHARGE TRANSFER -- CALC OF THE COMPLEX
+// PARAMETERS:
+// ct    = (in) main data structure with information about the charge transfer calculation
+// dftb  = (in) main data structure for DFTB calculations
+////////////////////////////////////////////////////////////////////////
 
-*/
-/* ********************************************************************* */
-
-/* NDIM = NORB !!! */
-
-int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
-{
   int i, j, k,l, m, n, li, lj;
   // lapack
   long ier;
@@ -292,7 +289,7 @@ int run_dftb2(charge_transfer_t *ct, dftb_t *dftb)
 //*/
 
 ///*
-//purify S and H matrix (no longer useful with double zeta version)
+//purify S and H matrix (no longer useful with "double-zeta" version)
   kk=0;
   for (i = 0; i < ct->sites; i++) {
     for (j = 0; j < ct->site[i].homos; j++){

@@ -135,8 +135,9 @@ gmx_add_man_page(mdrun)
   add_library(librmsd STATIC IMPORTED)
   set_target_properties(librmsd PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/rmsd/ls_rmsd_tom.o)
   add_library(libstdc++ STATIC IMPORTED)
-  set_target_properties(libstdc++ PROPERTIES IMPORTED_LOCATION /usr/lib/gcc/x86_64-linux-gnu/4.4/libstdc++.a) # on TCB-server
+  #set_target_properties(libstdc++ PROPERTIES IMPORTED_LOCATION /usr/lib/gcc/x86_64-linux-gnu/4.4/libstdc++.a) # on TCB-server
   #set_target_properties(libstdc++ PROPERTIES IMPORTED_LOCATION /opt/gcc_4.4/lib64/libstdc++.a)  # on IC2
+  set_target_properties(libstdc++ PROPERTIES IMPORTED_LOCATION /opt/gcc/4.9.3/lib64/libstdc++.a)  #new on IC2
 target_link_libraries(mdrun ${GMX_EXTRA_LIBRARIES} libdftb librksuite libnegf librmsd libstdc++)
 set_target_properties(mdrun PROPERTIES OUTPUT_NAME "mdrun${GMX_BINARY_SUFFIX}" COMPILE_FLAGS "${OpenMP_C_FLAGS}")
 

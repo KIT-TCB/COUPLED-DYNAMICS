@@ -54,13 +54,13 @@
 #endif
 
 //////// DFTB/QM parameters ///////
-#define DFTB_MAXTYPES (6)  /* number of chemical elements known to DFTB - C,H,N,O,S,F are enough */
-#define MAX_PATH_LENGTH (288)
-#define LDIM (9)   /* size of profylactic arrays - 1 s, 3 p and 5 d orbital components = 9 */
-#define MAXITER_BROYDEN (80)
-#define MAXITER_DIIS (200)
-#define IMATSZ_BROYDEN (80)
-#define MAXITER_SCC (70)
+#define DFTB_MAXTYPES (6)     /* number of chemical elements known to DFTB - C,H,N,O,S,F are enough */
+#define MAX_PATH_LENGTH (288) /* max length of the string, which holds the path to the SLKO files */
+#define LDIM (9)              /* size of profylactic arrays - 1 s, 3 p and 5 d orbital components = 9 */
+#define MAXITER_BROYDEN (80)  /* max number of iterations for self consitent charge calculations with the broyden method */
+#define MAXITER_DIIS (200)    /* max number of iterations for self consitent charge calculations with the diis method */
+#define IMATSZ_BROYDEN (80)   /* size of inverse matrix that is used in the broyden method*/
+#define MAXITER_SCC (70)      /* maybe a relict? SCC iterations are now given directly in the respective function */
 
 
 ///// GAFF parameter used in the construction of link hydrogen atoms /////
@@ -85,13 +85,13 @@
 
 
 //// MISC. ////
-#define OFFDIAG_FACTOR_HOLE (1.540) 
-#define OFFDIAG_FACTOR_ELEC (1.795)
-#define EPSILON_OP (2.0) // high frequenzy permittivity. guess
-#define N_OLDVEC (5) //number of time steps a_old is kept 
-#define QMCASIZE (50000) // max number of atoms named connection atoms in the whole system
-#define PROTEIN (0) // enable protein version (activate protein_preprocessor)
-#define GIESEPEPTIDE (0) // hard coded implementation of TDA for peptide(Phys. Chem. B 118, 2014, 4261-4272)
+#define OFFDIAG_FACTOR_HOLE (1.540) // scaling of offdiagonal elements of FO Hamiltonian. See: J. Chem. Phys. 2014, 140, 104105+
+#define OFFDIAG_FACTOR_ELEC (1.795) // scaling of offdiagonal elements of FO Hamiltonian. See: Phys. Chem. Chem. Phys. 2015, 17, 14342-14354.
+#define EPSILON_OP (2.0)            // quite general value for high frequency permittivity. Needed for implicit solvent polarization. 
+#define N_OLDVEC (5)                // number of time steps a_old is kept 
+#define QMCASIZE (50000)            // max number of atoms named connection atoms in the whole system
+#define PROTEIN (0)                 // enable protein version (activate protein_preprocessor)
+#define GIESEPEPTIDE (0)            // if GIESEPEPTIDE==1, switch to hard-coded implementation of TDA for one specific peptide(Phys. Chem. B 118, 2014, 4261-4272)
 
 #define ADIAB_SCF_CONVERGENCE (1.e-12) // used in the minimization of Hamiltonian within the adiabatic dynamics
 #define DIIS_INIT_MIXING_PARAM (0.2)
@@ -102,10 +102,11 @@
 #define FERMI_CONVERG (1.e-12) // 1.e-9 kT in hartree units (at 300 K)
 #define SIMPLE_ALMIX (0.01)
 #define ALMIX_ATTENUATOR (0.9)
-#define MAXLINES (50) // maximal length of input file
-#define MAXWIDTH (500) // maximal width of key and value of input file (and also width of dummy for reading input)
-#define MAXLINES2 (300) // maximal elements of dummy for reading input  
-#define MAXSITETYPES (5) // maximal number of different sites
+#define MAXLINES (50)      // maximal number of lines in input files
+#define MAXWIDTH (1000)    // maximal width of key- and value-field in input files 
+#define MAXELEMENTS (300)  // maximal elements of in a value-field  
+#define ELEMENTWIDTH (100) // maximal length of a single element in the value-field  
+#define MAXSITETYPES (5)   // maximal number of different types of sites. e.g. guanine-adenine-guanine stack would have two different sitetypes 
 
 #define NEG_IMAG_POT (1.e-3)  // tau for the negative imaginary potential on the last couple of sites
 /* #define SURVIVAL_THRESHOLD (0.1)  // if the survival drops under this value, finish */
@@ -120,7 +121,7 @@
 #define TFS_DECAY_CONSTANT (3.) // used in the decoherence algorithm
                                 // within Tully's fewest switches
 
-#define TFL_RC (1.0/80.0)  //critical fraction for flexible surface hopping approach
+#define TFL_RC (1.0/80.0)  //critical fra5ction for flexible surface hopping approach
 
 #define MAX_PME_NEIGHBORS (1666)
 
@@ -133,21 +134,25 @@
 //#define HUBBARD_ADENINE (0.208)
 //#define HUBBARD_GUANINE (0.205)
 //#define EXTCHARGE_SHIFT (0.06080)
-//#define LAMBDA_I (0.008452341) // inner-sphere reorganization energy of a nucleobase
-                               // 0.23 eV in hartree units
-//#define SIC_COEFFICIENT (0.2) // self-interaction correction - only 20 % of the QQ interaction involved
+//#define LAMBDA_I (0.008452341) // inner-sphere reorganization energy of a nucleobase. 0.23 eV in hartree units
+//#define SIC_COEFFICIENT (0.2) // self-interaction correction - only 20 % of the QQ interaction involved. Now you have to give the SIC coefficient in the input
 
+
+
+/* some simple custom data types */
 typedef int twointegers[2];
 typedef double tendoubles[10];
 typedef double twodoubles[2];
 typedef double twodoubles_array[2][MAXITER_BROYDEN];
-typedef char sixstring[6];
+typedef char sixstring[6]; //gromacs atom names are 5 chars long (+string terminator \0)
 typedef int pme_integers[MAX_PME_NEIGHBORS];
 typedef struct {double dr, di;} double_complex;
 
+/* available jobtypes */
 enum { cteSCCDYNAMIC, cteADIABATIC, cteBORNOPPENHEIMER, cteNONSCCDYNAMIC, ctePARAMETERS, cteADNONSCC, cteNOMOVEMENT, cteSURFACEHOPPING, cteFERMI, cteFERMIADIABATIC, cteFERMISFHOPPING, cteTULLYFEWESTSWITCHES, cteTULLYLOC, ctePERSICOSFHOPPING, cteNEGFLORENTZ, cteNEGFLORENTZNONSCC, cteESP, cteNR , cteTDA, ctePREZHDOSFHOPPING };
 
 typedef struct {
+  /* data structure for non-equilibrium greens function calculation. I guess this was used for calculating transmissions in DNA between electrodes */
   long n[1], n_lorentz[1];
   double e_f_left[1], e_f_right[1],
          temp[1];
@@ -173,6 +178,7 @@ typedef struct {
 } ct_negf_lorentz_t;
 
 typedef struct {
+  /* used in persico surface hopping */
   double *in,
          *evec,
          *work,
@@ -185,6 +191,7 @@ typedef struct {
 
 
 typedef struct {
+  /* data structure that stores information about one fragment */
   int type;            /* specific type of this site */
   int resnr;           /* residue number */
   int atoms;           /* number of atoms for each residue */
@@ -221,25 +228,15 @@ typedef struct {
   int norb;            /* total number of orbitals */
   double radius;       /* radius of charged sphere in polarizable continuum */
   int do_scc;          /* each site may or may not be calculated self consistently */
-  int do_custom_occ;   /* each site may also use a customized occupation, instead of fermi distribution */
-  double *custom_occ;     
+  int do_custom_occ;   /* each site may also use a customized occupation, instead of fermi distribution. This may be used as rough approximation for excited states. */
+  double *custom_occ;  /* occupation vector e.g. ...2, 2, 2, 1, 1, 0, 0... for system where one electron from HOMO "gets excited" into LUMO*/   
   double *com;         /* center of mass[bohr]. needed to decide if site should become active or not */
   int active;          /* switch 0/1 that determines if site is part of the QM calculation or just inactive member of the pool */
 } ct_site_t;
 
-typedef struct {
-  double **U,   //unitary transformation matrix = alignment
-         *sij,
-         *evec,
-         *work,
-         *iwork,
-         *eval,
-         *issupz;
-  long lwork,
-       liwork;
-} align_t;
 
 typedef struct {
+  /* main data structure of the charge transfer code */
   int jobtype;         /* cteXXX */
   int interval;        /* how often should the parameters be calculated? */
   int qmmm;            /* 1 or 0 */
@@ -252,7 +249,7 @@ typedef struct {
   int dim;             /* dimension of hamilton matrix and so on. (not the same as the number of sites since multiple MOs per site are possible) */
   int is_hole_transfer; /* electron or hole transfer */
   double offdiag_scaling; /* 1.540 scaling factor according to J. Chem. Phys. 140, 104105 (2014) */
-  int is_protein;      /* proteins need new residues built by protein_preprocessor */
+  int is_protein;      /* proteins need new residues built by protein_preprocessor. Not implemented yet*/
 //  int *homo;           /* which orbital is HOMO? */				//	NOW IN STRUCT SITE
 //  int *atoms;          /* number of atoms for each residue */				NOW IN STRUCT SITE
   int *last_atom;      /* index of the last atom of each residue, in the array of atoms of the complex */
@@ -344,9 +341,8 @@ typedef struct {
   double **per_diab_hamiltonian;
   int decoherence;     /* shall the decoherence correction be applied? 0==NO, 1==YES */
   ct_negf_lorentz_t *negf_arrays;
-  align_t align;
   dvec efield;  // external electric field
-  int first_step; // is first time QM calculations? may differ from "step==0" from gromacs-steps in case of reruns. general purpose variable can be used by different routines (compared to tfs_initialization_step)
+  int first_step; // is first time QM calculations? may differ from "step==0" from gromacs-steps in case of reruns. general purpose variable can be used by different routines (in contrast to tfs_initialization_step)
   double *born_overlap; //overlap used in cteBORNOPPENHEIMER
   // variables for adaptive QM zone
   int pool_size;          // number of possible sites (active sites are ct->sites)
@@ -358,6 +354,7 @@ typedef struct {
 } charge_transfer_t;
 
 typedef struct {
+  /* data structure for DIIS charge convergence method used to converge coarse grained FO Hamiltonian */
   int n_prev_vector;       // actual # of stored previous vectors
   int n_elem;              // # of elements of vectors
   int indx;
@@ -371,6 +368,7 @@ typedef struct {
 } ct_diis_t;
 
 typedef struct {
+  /* data structure for BROYDEN charge convergence method used to converge coarse grained FO Hamiltonian */
   int i_iter;                  // actual iteration
   int n_elem;                  // # of elements of the vectors
   double omega0;               // Jacobi matrix differences
@@ -386,6 +384,7 @@ typedef struct {
 } ct_broyden_t;
 
 typedef struct {
+  /* data structure for BROYDEN charge convergence method used to converge fragment DFTB calculations */
   /* MAXSIZ will be substituted by the (much smaller) actual number of atoms in each nucleobase */
   double *f, //[MAXSIZ],
          *ui, //[MAXSIZ],
@@ -409,6 +408,7 @@ typedef struct {
 } dftb_broyden_t;
 
 typedef struct {
+/* data structure needed for the orthogonalization of MOs in DFTB calculations of the complex ( run_dftb2() )*/
   double *tij,
          *sij,
          *evec,
@@ -426,6 +426,7 @@ typedef struct {
 } dftb_orthogo_t;
 
 typedef struct {
+  /* data structure for the DFTB calculations of the individual fragments (called "phase1")*/
   dvec *x, // NNDIM 3 /* coordinates */
        *grad, // for explicit lambda_i. force on every atom of this site. dim nn
        *partgrad, // for explicit lambda_i. force on every atom of this site. dim nn
@@ -438,20 +439,20 @@ typedef struct {
          inv_tot_mass, /* inverse of the total mass of the nucleobase */
          esp, /* electro-static potential at the nucleobase */
          *ze, /* magnitudes of external charges, NNDIM */
-         *qmat, // NNDIM
-         *qmold, // NNDIM
-         *qmulli, // MDIM !!!
+         *qmat, // NNDIM  /* number of valence electrons on each atom in present SCC iteration */
+         *qmold, // NNDIM /* number of valence electrons on each atom in last SCC iteration */
+         *qmulli, // MDIM !!! /* help vector needed for mulliken charge calculation */
  //        *d_qmulli, // atomic delta q, calculated via mulliken charges
-         au[LDIM][LDIM],
-         bu[LDIM][LDIM],
+         au[LDIM][LDIM], /* auxiliary matrix in which the Hamilton matrix between two atoms is read in from the slater koster files */
+         bu[LDIM][LDIM], /* auxiliary matrix in which the overlap matrix between two atoms is read in from the slater koster files */
          auh[LDIM][LDIM], //needed for gradient calculation (lambda_i)
          buh[LDIM][LDIM], //needed for gradient calculation (lambda_i)
-         **a, // MDIM MDIM
-         **a_old, // MDIM MDIM
-         **a_ref, // MDIM MDIM
-         **b, // MDIM MDIM
-         *a_trans, //ndim^2
-         *b_trans, //ndim^2
+         **a, // MDIM MDIM /* first this is the charge dependent (DFTB2) Hamilton matrix of the fragment (in AO basis). After diagonalization these are the eigenvectors*/
+         **a_old, // MDIM MDIM /* eigenvectors of the last MD step */
+         **a_ref, // MDIM MDIM /* used to store the eigenvectors of a reference snapshot (first MD step)*/
+         **b, // MDIM MDIM /* overlap matrix */
+         *a_trans, //ndim^2 /* essentially same as "a" but as single array, which is needed by LAPACK */
+         *b_trans, //ndim^2 /* essentially same as "b" but as single array, which is needed by LAPACK */
          **hamil, // MDIM MDIM
          **overl, // MDIM MDIM
          **overl_diffuse, //overlap of atomic orbitals, calculatet with diffuse basis functions
@@ -480,6 +481,7 @@ typedef struct {
 } dftb_phase1_t;
 
 typedef struct {
+  /* data structure for the DFTB calculations of the whole complex consisting of several fragments  (called "phase2")*/
   dvec *x, // NNDIM 3 /* coordinates */
        *grad, // for explicit lambda_i. force on every atom of this site. dim nn
        *partgrad, // for explicit lambda_i. force on every atom of this site. dim nn
@@ -529,6 +531,7 @@ typedef struct {
 } dftb_phase2_t;
 
 typedef struct {
+  /* main data structure for DFTB related stuff */
   int lmax[DFTB_MAXTYPES];       /* number of shells for each atom type */
   double racc, dacc;             /* machine accuracy */
   //double ****skhtab1, ****skstab1,
@@ -625,7 +628,6 @@ void project_wf_on_new_basis(int step, dftb_t *dftb, charge_transfer_t *ct, FILE
 void write_out_MOs(int step,rvec x_ct, t_atoms *ct_atoms, dftb_t *dftb, charge_transfer_t *ct);
 void get_spectrum(charge_transfer_t *ct, dftb_t *dftb);
 void sort_mobasis(dftb_t *dftb, charge_transfer_t *ct, int i);
-void get_alignment_matrix(align_t arrays, double **overlap, long n );
 t_atoms* protein_preprocessor(t_atoms *atoms, t_state *state_global);
 double calc_tda(charge_transfer_t *ct);
 void print_time_difference(char *s, struct timespec start, struct timespec end);

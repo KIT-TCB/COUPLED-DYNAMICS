@@ -19,7 +19,8 @@ if [ -e $progpath/mdrun ] ;then tests=$tests" non-mpi"; fi
 echo "Testing program in $progpath"
 for run in $tests
 do
-  rm $dir/$run/* -f 
+  rm $dir/$run -rf 
+  mkdir $dir/$run
   cd $dir/$run
   cp $dir/charge-transfer.dat $dir/et.spec  $dir/etf2.spec $dir/ct.tpr .
 
@@ -31,8 +32,14 @@ do
     mpirun -np 1 "$progpath/mdrun_mpi -pd -s ct.tpr " > out.dat 2> /dev/null
   fi
   
-  differences=`diff $dir/expected_CT_TDA.xvg $dir/$run/CT_TDA.xvg | wc -l` 
-  if [ $differences != 0 ]; then echo "FAILED TEST   $run" ;else echo "PASSED TEST   $run" ; fi
+  if [ -e $dir/$run/CT_TDA.xvg ] 
+  then
+    differences=`diff $dir/expected_CT_TDA.xvg $dir/$run/CT_TDA.xvg | wc -l` 
+    if [ $differences != 0 ]; then echo "FAILED TEST   $run" ;else echo "PASSED TEST   $run" ; fi
+  else
+    echo "FAILED TEST   $run"
+  fi
+
 done
 
 

@@ -1,7 +1,15 @@
 #include "charge_transfer.h"
 
-long orthogonalize(double **THamil, double **OverlF, double **THamilOr, long n, dftb_orthogo_t arrays)
-{
+long orthogonalize(double **THamil, double **OverlF, double **THamilOr, long n, dftb_orthogo_t arrays){
+/* This function performs a standard DFTB calculation of a single fragment */
+
+// PARAMETERS:
+// THamil   = (in) non-othogonal FO Hamiltonian 
+// OverlF   = (in) corresponding overlap matrix in FO basis
+// THamilOr = (out) orthogonalized FO Hamiltonian
+// n        = (in) dimension of the matirces (Total number of considered FOs. Same as number of sites if we take only HOMOs into consideration)
+// arrays   = (auxiliary/out) data structure that helps in the orthogonalization
+////////////////////////////////////////////////////////////////////////
   extern void dpotrf_(char *, long *, double *, long *, long *);
   extern void dpotri_(char *, long *, double *, long *, long *);
   extern void dsyevr_(char *, char *, char *, long *, double *, long *,

@@ -179,8 +179,17 @@ int negf_propagate(charge_transfer_t *ct)
   return 0;
 }
 
+
 int searchkey(int lines, char input[MAXLINES][2][MAXWIDTH], char *key , char value[MAXWIDTH], int required){
-  int line;
+/* given a keyword, this function checks if it is present in the input. If it is so, the corresponding value will be returned */
+
+// PARAMETERS:
+// lines = (in) total number of lines of input 
+// key   = (in) the key that is searched
+// value = (out) the corresponding value to key
+// required = (in) is the keyword required or optional for this type of calculation
+////////////////////////////////////////////////////////////////////////
+    int line;
   for (line=0; line<lines; line++){
     if(strcmp(input[line][0],key)==0){
       strcpy(value, input[line][1]);
@@ -195,11 +204,16 @@ int searchkey(int lines, char input[MAXLINES][2][MAXWIDTH], char *key , char val
   }
 }
 
-#ifdef GMX_MPI
-int read_file(char* file_name, char input[MAXLINES][2][MAXWIDTH], char possiblekeys[][2][MAXWIDTH], int nkeys, int ct_mpi_rank){
-#else
+
 int read_file(char* file_name, char input[MAXLINES][2][MAXWIDTH], char possiblekeys[][2][MAXWIDTH], int nkeys){
-#endif
+/* reads the input files that are related to the CT code */
+
+// PARAMETERS:
+// file_name = (in) complete path to file
+// input     = (out) the key and value pairs that are found in the input files
+// possiblekeys = (in) collection of every allowed key
+// nkeys     = (in) number of possible keys
+///////////////////////////////////////////////////////
   int i,j;
   int lines, ch, line, len;
   FILE *f;
@@ -208,12 +222,12 @@ int read_file(char* file_name, char input[MAXLINES][2][MAXWIDTH], char possiblek
 
   f = fopen(file_name, "r");
   if (f == NULL) {
-    PRINTF("%s not accessible, exiting!\n", file_name);
+    printf("%s not accessible, exiting!\n", file_name);
     exit(-1);
   }
-  PRINTF("Searching in file %s for:\n", file_name);
+  printf("Searching in file %s for:\n", file_name);
   for (i=0; i< nkeys; i++){
-    PRINTF("%20s:  %s\n",possiblekeys[i][0], possiblekeys[i][1]);
+    printf("%20s:  %s\n",possiblekeys[i][0], possiblekeys[i][1]);
   }
 
   /* get length of input file */
@@ -256,27 +270,33 @@ int read_file(char* file_name, char input[MAXLINES][2][MAXWIDTH], char possiblek
         j=0;
     }
     if (j) {
-      PRINTF("KEYWORD NOT KNOWN: %s\n", input[line][0]);
+      printf("KEYWORD NOT KNOWN: %s\n", input[line][0]);
       exit(-1);
     }
   }
   fclose(f);
-  PRINTF("Finished reading file %s\n", file_name);
+  printf("Finished reading file %s\n", file_name);
 
   /* print copy of the input file */
-  PRINTF("---------------------\n");
-  PRINTF("INPUT:\n");
+  printf("---------------------\n");
+  printf("INPUT:\n");
   for (line=0; line<lines; line++){
-    PRINTF("%s = %s\n", input[line][0], input[line][1]);
+    printf("%s = %s\n", input[line][0], input[line][1]);
   }
-  PRINTF("---------------------\n");
+  printf("---------------------\n");
   return lines;
 }
 
 
-
-
 int split_string_into_double(char value[MAXWIDTH],int n, double* target, char* name){
+/* splits a string of whitespace separated numbers and converts them into double data type */
+
+// PARAMETERS:
+// value  = (in) is the value string that gets splitted
+// n      = (in) expected number of elements
+// target = (out) vector containing the individual doubles
+// name   = (in) name of the keyword whose corresponding value gets splitted
+//////////////////////////////////////////////////////////////////////////////////////////
   int i;
   char *ptr;
 
@@ -294,6 +314,14 @@ int split_string_into_double(char value[MAXWIDTH],int n, double* target, char* n
 
 
 int split_string_into_int(char value[MAXWIDTH],int n, int* target, char* name){
+/* splits a string of whitespace separated numbers and converts them into integer data type */
+
+// PARAMETERS:
+// value  = (in) is the value string that gets splitted
+// n      = (in) expected number of elements
+// target = (out) vector containing the individual inegers
+// name   = (in) name of the keyword whose corresponding value gets splitted
+//////////////////////////////////////////////////////////////////////////////////////////
   int i;
   char *ptr;
 
@@ -308,7 +336,17 @@ int split_string_into_int(char value[MAXWIDTH],int n, int* target, char* name){
   else if(i<n){printf("TOO FEW ARGUMENTS FOR %s\n", name); exit(-1);} 
   else return 0;
 }
-int split_string_into_string(char value[MAXWIDTH],int n, char target[][MAXWIDTH], char* name){
+
+
+int split_string_into_string(char value[MAXWIDTH],int n, char target[][ELEMENTWIDTH], char* name){
+/* splits a string of whitespace separated substrings (names, words,...)*/
+
+// PARAMETERS:
+// value  = (in) is the value string that gets splitted
+// n      = (in) expected number of elements
+// target = (out) vector containing the individual substrings
+// name   = (in) name of the keyword whose corresponding value gets splitted
+//////////////////////////////////////////////////////////////////////////////////////////
   int i;
   char *ptr;
 
@@ -335,7 +373,19 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 #else
 void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mdatoms, charge_transfer_t *ct, char *slko_path, t_state *state) {
 #endif
-  char sitespecdat[MAXSITETYPES][MAXWIDTH], value[MAXWIDTH];
+/* Initializes the charge transfer code. Reads in CT files, sets up the stuff that is fixed variables, allocates memory */
+
+// PARAMETERS:
+// atoms       = (in) variable of GROMACS data-structure-type, which we generated outside of this function. Contains info like atomnames and residuenumbers, that we need to distinguish QM from MM atoms. 
+// top_global  = (in) GROMACS data structure, from which we only need total number of MM atoms
+// mdatoms     = (in) variable of GROMACS data-structure-type (we need atomic masses)
+// ct          = (out) main data structure with information about the charge transfer calculation
+// slko_path   = (out) path to the Slater-Koster files
+// state       = (in) GROMACS data structure that holds (among others) the coordinates of the MD system
+// ct_mpi_rank = (in) the rank of the process in MPI calculations (each process in MPI calculations can be destinguished by its value of ct_mpi_rank)
+//////////////////////////////////////////////////////////////////////////////////////////
+
+  char sitespecdat[MAXSITETYPES][ELEMENTWIDTH], value[MAXWIDTH];
   char possiblekeys1[][2][MAXWIDTH]={
   {"slkopath",  "{Path} to directory of the DFTB Slater-Koster files"},
   {"chargecarrier",   "The charge carrier (electron/hole). Will effect sign of the Hamilton matrix and of the charges that are added to the force-field."},
@@ -394,8 +444,8 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   dvec bond;
   ct_site_t *site, s;
 
-  char input1[MAXLINES][2][MAXWIDTH],input2[MAXLINES][2][MAXWIDTH]; // several lines, 2 collumns (before and after '='), and string of several chars
-  char dummy[MAXLINES2][MAXWIDTH];
+  char input1[MAXLINES][2][MAXWIDTH],input2[MAXLINES][2][MAXWIDTH]; // variables to store input files(charge-transfer.dat, and *.spec): several lines, 2 collumns (before and after '='), and string of several chars
+  char dummy[MAXELEMENTS][ELEMENTWIDTH];
   int lines1, lines2;
 
   ct->first_step=1;
@@ -407,14 +457,8 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
 
 
 
-
-
   /* Get input from file charge-transfer.dat */
-#ifdef GMX_MPI
-  lines1=read_file("charge-transfer.dat", input1, possiblekeys1, sizeof(possiblekeys1)/sizeof(possiblekeys1[0]), ct_mpi_rank);
-#else
   lines1=read_file("charge-transfer.dat", input1, possiblekeys1, sizeof(possiblekeys1)/sizeof(possiblekeys1[0]));
-#endif
 
 
 
@@ -721,11 +765,7 @@ void init_charge_transfer(t_atoms *atoms, gmx_mtop_t *top_global, t_mdatoms *mda
   split_string_into_string(value,ct->sitetypes, sitespecdat, "typefiles");
 
   for (i=0; i<ct->sitetypes ;i++){
-#ifdef GMX_MPI
-    lines2=read_file(sitespecdat[i], input2, possiblekeys2, sizeof(possiblekeys2)/sizeof(possiblekeys2[0]), ct_mpi_rank);
-#else
     lines2=read_file(sitespecdat[i], input2, possiblekeys2, sizeof(possiblekeys2)/sizeof(possiblekeys2[0]));
-#endif
     searchkey(lines2, input2, "natoms",value, 1);
     ct->sitetype[i].atoms=atoi(value);
     snew(ct->sitetype[i].atom, ct->sitetype[i].atoms);
@@ -1763,6 +1803,15 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
 void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *slko_path)
 #endif
 {
+/* Initializes the dftb calculations. Reads information from Slater-Koster files, copies information that was gathered in init_charge_transfer(), allocates memory */
+
+// PARAMETERS:
+// mdatoms     = (in) variable of GROMACS data-structure-type (we need atomic masses)
+// dftb        = (out) main data structure for DFTB calculations
+// ct          = (in) main data structure with information about the charge transfer calculation
+// slko_path   = (in) path to the Slater-Koster files
+// ct_mpi_rank = (in) the rank of the process in MPI calculations (each process in MPI calculations can be destinguished by its value of ct_mpi_rank)
+//////////////////////////////////////////////////////////////////////////////////////////
   const char *type_symbols = "chnosf";
   const char *suffix1 = "-c.spl";
   const char *suffix2 = "-uncomp-c.spl"; // now diffrent folder for each parameter set with diefferent r_dens and r_wf 
@@ -1983,6 +2032,7 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
     for (j=0; j<ct->site[i].atoms; j++) {
       dftb->phase1[i].mass[j] = mdatoms->massT[ct->site[i].atom[j]];
       mass += dftb->phase1[i].mass[j];
+      printf("site %d  mass %d   %f\n",i ,j,  mdatoms->massT[ct->site[i].atom[j]]);
     }
     dftb->phase1[i].inv_tot_mass = 1.0 / mass;
   }
@@ -2129,19 +2179,6 @@ void init_dftb(t_mdatoms *mdatoms, dftb_t *dftb, charge_transfer_t *ct, char *sl
   snew(dftb->orthogo.eval, ct->dim);
   snew(dftb->orthogo.issupz, 2*ct->dim);
 
-  /* auxiliary arrays for alignment of wave function */
-  snew(ct->align.sij, ct->dim*ct->dim);
-  snew(ct->align.evec, ct->dim*ct->dim);
-  ct->align.lwork = 26*ct->dim;
-  snew(ct->align.work, 26*ct->dim*26*ct->dim);
-  ct->align.liwork = 10*ct->dim;
-  snew(ct->align.iwork, 10*ct->dim*10*ct->dim);
-  snew(ct->align.eval, ct->dim);
-  snew(ct->align.issupz, 2*ct->dim);
-  snew(ct->align.U, ct->dim);
-    snew(ct->align.U[0], SQR(ct->dim));
-    for(j = 1; j < ct->dim; j++)
-      ct->align.U[j]=ct->align.U[0] + j * ct->dim;
 
   /* arrays for state following */
   /*

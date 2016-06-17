@@ -1,7 +1,7 @@
 slkoPath	=/home/kit/ipc/yc6285/SLKO/CT-SLKO/8-inf/
 jobtype		=SCC
 chargecarrier	=hole
-offdiagscaling	=on
+offdiagscaling	=yes
 extchrmode	=PME
 espscaling	=1.5
 SIC		=0.2
@@ -12,5 +12,5 @@ nsites		=3
 sites		=92 93 94
 sitetypes	=  1 1 1
 sitescc		= 0 0 0
-wavefunctionreal= 0.0  0.0  0.0  0.0  0.0  0.0
+wavefunctionreal= 1.0  0.0  0.0  0.0  0.0  0.0
 wavefunctionim	= 0.0  0.0  0.0  0.0  0.0  0.0

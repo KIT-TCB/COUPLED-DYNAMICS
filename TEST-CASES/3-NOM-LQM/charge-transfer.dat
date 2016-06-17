@@ -1,12 +1,12 @@
 slkopath=/home/kit/ipc/yc6285/SLKO/CT-SLKO/8-inf/
-jobtype=NOM
+jobtype=NOM 
 nstQM=1
 chargecarrier=hole
 offdiagscaling	=	on
 extchrmode	=	pme
 espscaling	= 1.5
 SIC	=	0.0
-internalrelax=  full
+internalrelax = parameter
 nsitetypes=1
 typefiles=mol.spec
 nsites=3
